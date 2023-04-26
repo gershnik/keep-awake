@@ -1,0 +1,112 @@
+cmake_minimum_required(VERSION 3.25)
+
+set_property(GLOBAL PROPERTY USE_FOLDERS ON)
+set(CMAKE_CONFIGURATION_TYPES "Debug;RelWithDebInfo" CACHE STRING "" FORCE)
+
+#Set sane base flags to avoid reliance on whatever defaults are set from outside
+set(CMAKE_C_FLAGS "/Zi /MP /DWIN32 /D_WINDOWS")
+set(CMAKE_C_FLAGS_DEBUG "")
+set(CMAKE_C_FLAGS_RELWITHDEBINFO "")
+set(CMAKE_CXX_FLAGS "${CMAKE_C_FLAGS}")
+set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_C_FLAGS_DEBUG}")
+set(CMAKE_CXX_FLAGS_RELWITHDEBINFO "${CMAKE_C_FLAGS_RELWITHDEBINFO}")
+set(CMAKE_EXE_LINKER_FLAGS_DEBUG  "")
+set(CMAKE_EXE_LINKER_FLAGS_RELWITHDEBINFO "")
+set(CMAKE_RC_FLAGS "/nologo /DWIN32")
+set(CMAKE_RC_FLAGS_DEBUG "/D_DEBUG")
+set(CMAKE_RC_FLAGS_RELWITHDEBINFO "/DNDEBUG")
+set(CMAKE_SHARED_LINKER_FLAGS_DEBUG "")
+set(CMAKE_SHARED_LINKER_FLAGS_RELWITHDEBINFO "")
+set(CMAKE_C_STANDARD_LIBRARIES "")
+set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:DEBUG>:Debug>DLL")
+
+set(CMAKE_CXX_STANDARD 20)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
+
+set(CMAKE_C_STANDARD 11)
+set(CMAKE_C_STANDARD_REQUIRED ON)
+
+set(CMAKE_PCH_INSTANTIATE_TEMPLATES ON)
+
+add_compile_options(
+    /Zi
+
+    /sdl
+    /GR 
+    /EHsc
+    /bigobj
+    "$<$<CONFIG:DEBUG>:/Od;/Ob0>"
+    "$<$<CONFIG:RELWITHDEBINFO>:/O2;/Ob2;/Oi;/Ot;/GT;/Gy;/Qpar;/GL>"
+)
+
+add_compile_definitions(
+    "$<$<CONFIG:DEBUG>:_DEBUG>"
+    "$<$<CONFIG:RELWITHDEBINFO>:NDEBUG>"
+)
+
+add_link_options(
+    "$<$<CONFIG:DEBUG>:/DEBUG:FASTLINK;/INCREMENTAL>"
+    "$<$<CONFIG:RELWITHDEBINFO>:/DEBUG;/RELEASE;/INCREMENTAL:NO;/OPT:REF;/OPT:ICF;/LTCG:incremental>"
+)
+
+project(keep-awake)
+
+include(FetchContent)
+
+set(DECLARED_DEPENDENCIES "")
+
+FetchContent_Declare(argum
+    GIT_REPOSITORY  https://github.com/gershnik/argum.git
+    GIT_TAG         v2.2
+    GIT_SHALLOW     TRUE
+    GIT_PROGRESS    TRUE
+)
+list(APPEND DECLARED_DEPENDENCIES argum)
+
+FetchContent_MakeAvailable(${DECLARED_DEPENDENCIES})
+
+get_directory_property(KNOWN_SUBDIRECTORIES SUBDIRECTORIES)
+foreach(dir ${KNOWN_SUBDIRECTORIES})
+    if (IS_DIRECTORY ${dir})
+        foreach(dep ${DECLARED_DEPENDENCIES})
+            #check if the subdirectory is "under" the dependency source dir
+            string(FIND ${dir} ${${dep}_SOURCE_DIR} match_pos)
+            if (match_pos EQUAL 0)
+                #and, if so, exclude it from all to prevent installation
+                set_property(DIRECTORY ${dir} PROPERTY EXCLUDE_FROM_ALL YES)
+                break()
+            endif()
+        endforeach()
+    endif()
+endforeach()
+
+
+add_executable(keep-awake)
+set_target_properties(keep-awake PROPERTIES WIN32_EXECUTABLE TRUE)
+
+target_link_libraries(keep-awake PRIVATE
+    argum
+)
+
+target_compile_definitions(keep-awake PRIVATE
+    _WIN32_WINNT=0x0A00
+    UNICODE
+    _UNICODE
+    NOMINMAX
+)
+
+target_sources(keep-awake PRIVATE
+    keep-awake.cpp
+    pch.h
+    keep-awake.rc
+    keep-awake.ico
+    resource.h
+)
+
+set_source_files_properties(keep-awake.rc PROPERTIES OBJECT_DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/keep-awake.ico)
+
+target_precompile_headers(keep-awake PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/pch.h)
+
+
+
+
