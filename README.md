@@ -1,10 +1,10 @@
 # Keep-Awake
 
-This is a small tool that allows you to keep Windows machine awake. 
-This is useful, for example, when connectiong to a Windows machine that can sleep over SSH or other similar
-scenarios.
+This is a small tool that allows you prevent a Windows machine from sleeping/hybernating. 
+This is useful, for example, when connectiong to a Windows machine that is configured to sleep when not used 
+over SSH. 
 
-Unlike other solutions to this task this tool doesn't change global computer settings and so doesn't leave
+Unlike other solutions to this task `keep-awake` doesn't change global computer settings and so doesn't leave
 them 'orphaned' if it is abnormally terminated.
 
 ## Installation
