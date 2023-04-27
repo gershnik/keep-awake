@@ -26,7 +26,7 @@ jobs:
       - name: Set release version
         shell: bash
         run: |
-          echo "NEW_VERSION=$(python3 .github/workflows/update-version.py ${{ github.event.inputs.release_type }})" >> $GITHUB_ENV
+          echo "NEW_VERSION=$(python3 .github/update-version.py ${{ github.event.inputs.release_type }})" >> $GITHUB_ENV
 
       - name: Update changelog
         uses: superfaceai/release-changelog-action@v2
@@ -47,6 +47,7 @@ jobs:
           cmake -E make_directory out
           cmake -S . -B out -DCMAKE_BUILD_TYPE=RelWithDebInfo -DFETCHCONTENT_QUIET=OFF
           cmake --build out --target keep-awake --config RelWithDebInfo
+          powershell Compress-Archive out/RelWithDebInfo/keep-awake.exe out/RelWithDebInfo/keep-awake.zip
 
       - name: Push changes to repository
         env:
@@ -68,7 +69,7 @@ jobs:
           tag_name: v${{ env.NEW_VERSION }}
           body: ${{ steps.get-changelog.outputs.changelog }}
           files: |
-            RelWithDebInfo/keep-awake.exe
+            out/RelWithDebInfo/keep-awake.zip
           draft: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

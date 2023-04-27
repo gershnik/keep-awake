@@ -4,8 +4,8 @@
 //
 
 VS_VERSION_INFO VERSIONINFO
- FILEVERSION @BUILD_MAJOR_VERSION@,@BUILD_MINOR_VERSION@
- PRODUCTVERSION @BUILD_MAJOR_VERSION@,@BUILD_MINOR_VERSION@
+ FILEVERSION @BUILD_MAJOR_VERSION@,@BUILD_MINOR_VERSION@,@BUILD_PATCH_VERSION@
+ PRODUCTVERSION @BUILD_MAJOR_VERSION@,@BUILD_MINOR_VERSION@,@BUILD_PATCH_VERSION@
  FILEFLAGSMASK 0x3fL
 #ifdef _DEBUG
  FILEFLAGS 0x1L
@@ -22,12 +22,12 @@ BEGIN
         BEGIN
             VALUE "CompanyName", "Eugene Gershnik"
             VALUE "FileDescription", "Keep Computer Awake"
-            VALUE "FileVersion", "@BUILD_MAJOR_VERSION@.@BUILD_MINOR_VERSION@"
+            VALUE "FileVersion", "@BUILD_MAJOR_VERSION@.@BUILD_MINOR_VERSION@.@BUILD_PATCH_VERSION@"
             VALUE "InternalName", "keep-awake.exe"
             VALUE "LegalCopyright", "Copyright (C) 2023"
             VALUE "OriginalFilename", "keep-awake.exe"
             VALUE "ProductName", "keep-awake"
-            VALUE "ProductVersion", "@BUILD_MAJOR_VERSION@.@BUILD_MINOR_VERSION@"
+            VALUE "ProductVersion", "@BUILD_MAJOR_VERSION@.@BUILD_MINOR_VERSION@.@BUILD_PATCH_VERSION@"
         END
     END
     BLOCK "VarFileInfo"
