@@ -1,0 +1,74 @@
+name: Release
+on:
+  workflow_dispatch:
+    inputs:
+      release_type:
+        type: choice
+        options:
+          - minor
+          - major
+        description: 'Release type'
+        required: true
+
+jobs:
+  release:
+    runs-on: windows-latest
+    permissions: write-all
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v3
+        
+      - name: Git configuration
+        run: |
+          git config --global user.email "<>"
+          git config --global user.name "GitHub Actions"
+
+      - name: Set release version
+        shell: bash
+        run: |
+          echo "NEW_VERSION=$(python3 .github/workflows/update-version.py ${{ github.event.inputs.release_type }})" >> $GITHUB_ENV
+
+      - name: Update changelog
+        uses: superfaceai/release-changelog-action@v2
+        with:
+          path-to-changelog: CHANGELOG.md
+          version: ${{ env.NEW_VERSION }}
+          operation: release
+
+      - name: Commit CHANGELOG.md and version.json changes and create tag
+        run: |
+          git add "version.json"
+          git add "CHANGELOG.md"
+          git commit -m "chore: release ${{ env.NEW_VERSION }}"
+          git tag v${{ env.NEW_VERSION }}
+          
+      - name: Build
+        run: |
+          cmake -E make_directory out
+          cmake -S . -B out -DCMAKE_BUILD_TYPE=RelWithDebInfo -DFETCHCONTENT_QUIET=OFF
+          cmake --build out --target keep-awake --config RelWithDebInfo
+
+      - name: Push changes to repository
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          git push origin && git push --tags
+
+      - id: get-changelog
+        name: Get version changelog
+        uses: superfaceai/release-changelog-action@v2
+        with:
+          path-to-changelog: CHANGELOG.md
+          version: ${{ env.NEW_VERSION }}
+          operation: read
+
+      - name: Update GitHub release documentation
+        uses: softprops/action-gh-release@v1
+        with:
+          tag_name: v${{ env.NEW_VERSION }}
+          body: ${{ steps.get-changelog.outputs.changelog }}
+          files: |
+            RelWithDebInfo/keep-awake.exe
+          draft: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

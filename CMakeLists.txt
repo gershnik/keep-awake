@@ -80,6 +80,10 @@ foreach(dir ${KNOWN_SUBDIRECTORIES})
     endif()
 endforeach()
 
+file(READ ${CMAKE_CURRENT_SOURCE_DIR}/version.json VERSION_JSON)
+string(JSON BUILD_MAJOR_VERSION GET ${VERSION_JSON} "BUILD_MAJOR_VERSION")
+string(JSON BUILD_MINOR_VERSION GET ${VERSION_JSON} "BUILD_MINOR_VERSION")
+
 
 add_executable(keep-awake)
 set_target_properties(keep-awake PROPERTIES WIN32_EXECUTABLE TRUE)
@@ -100,10 +104,14 @@ target_sources(keep-awake PRIVATE
     pch.h
     keep-awake.rc
     keep-awake.ico
+    version.rc2
+    version.rc2.in
     resource.h
 )
 
 set_source_files_properties(keep-awake.rc PROPERTIES OBJECT_DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/keep-awake.ico)
+
+configure_file(${CMAKE_CURRENT_SOURCE_DIR}/version.rc2.in ${CMAKE_CURRENT_SOURCE_DIR}/version.rc2 NEWLINE_STYLE WIN32 @ONLY)
 
 target_precompile_headers(keep-awake PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/pch.h)
 

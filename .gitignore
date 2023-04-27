@@ -3,3 +3,6 @@
 /out
 /fuckms
 
+*.aps
+version.rc2
+
