@@ -9,7 +9,7 @@ them 'orphaned' if it is abnormally terminated.
 
 ## Installation
 
-Just drop `keep-alive.exe` from [Releases](#releases) anywhere on your `%PATH%`.
+Just drop `keep-alive.exe` from [Releases](/releases) anywhere on your `%PATH%`.
 
 ## Usage
 
