@@ -9,7 +9,7 @@ them 'orphaned' if it is abnormally terminated.
 
 ## Installation
 
-Just drop `keep-alive.exe` from [Releases](/releases) anywhere on your `%PATH%`.
+Just drop `keep-awake.exe` from [Releases](/releases) anywhere on your `%PATH%`.
 
 ## Usage
 
@@ -20,7 +20,7 @@ are automatically killed when the session ends. Thus, effectively this mode keep
 the session is active.
 
 ```bat
-keep-alive
+keep-awake
 ... other commands ...
 ```
 
@@ -29,7 +29,7 @@ keep-alive
 If **not** running over SSH:
 
 ```bat
-keep-alive number-of-minutes
+keep-awake number-of-minutes
 ... other commands ...
 ```
 
