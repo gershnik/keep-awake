@@ -9,7 +9,7 @@ them 'orphaned' if it is abnormally terminated.
 
 ## Installation
 
-Just drop `keep-awake.exe` from [Releases](/releases) anywhere on your `%PATH%`.
+Just drop `keep-awake.exe` from [Releases](https://github.com/gershnik/keep-awake/releases) anywhere on your `%PATH%`.
 
 ## Usage
 
