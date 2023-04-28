@@ -1,7 +1,3 @@
-// header.h : include file for standard system include files,
-// or project specific include files
-//
-
 #pragma once
 
 // Including SDKDDKVer.h defines the highest available Windows platform.
@@ -13,9 +9,6 @@
 #include <windows.h>
 #include <shellapi.h>
 
-#include <stdlib.h>
-#include <malloc.h>
-#include <memory.h>
 
 #include <argum/parser.h>
 #include <argum/type-parsers.h>
