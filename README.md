@@ -29,7 +29,7 @@ keep-awake
 If **not** running over SSH:
 
 ```bat
-keep-awake number-of-minutes
+keep-awake seconds-to-keep-awake
 ... other commands ...
 ```
 
@@ -37,12 +37,12 @@ If running over SSH to prevent the process from being killed when SSH session en
 
 * If your shell is CMD
 ```bat
-powershell -Command "Invoke-WmiMethod -Path 'Win32_Process' -Name Create -ArgumentList 'path\to\keep-awake number-of-minutes'"
+powershell -Command "Invoke-WmiMethod -Path 'Win32_Process' -Name Create -ArgumentList 'path\to\keep-awake seconds-to-keep-awake'"
 ```
 
 * If your shell is Powershell
 ```powershell
-Invoke-WmiMethod -Path 'Win32_Process' -Name Create -ArgumentList 'path\to\keep-awake number-of-minutes'
+Invoke-WmiMethod -Path 'Win32_Process' -Name Create -ArgumentList 'path\to\keep-awake seconds-to-keep-awake'
 ```
 
 
