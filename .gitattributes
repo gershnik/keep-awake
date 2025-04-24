@@ -1,3 +1,4 @@
 *.h linguist-language=cpp
 *.in linguist-language=cpp
 *.rc linguist-language=cpp
+CMakeLists.txt -linguist-detectable
