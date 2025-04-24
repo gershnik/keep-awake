@@ -15,9 +15,8 @@ Just drop `keep-awake.exe` from [Releases](https://github.com/gershnik/keep-awak
 
 ### Keep machine awake until the process is terminated
 
-This mode is usefull when connecting over SSH. All the child processes created within SSH session 
-are automatically killed when the session ends. Thus, effectively this mode keeps the computer alive while
-the session is active.
+This mode is usefull when connecting over SSH. Windows SSH server kills all the child processes created within SSH session 
+when the session ends. Thus, effectively, this mode keeps the computer alive while the session is active.
 
 ```bat
 keep-awake
@@ -33,7 +32,7 @@ keep-awake seconds-to-keep-awake
 ... other commands ...
 ```
 
-If running over SSH to prevent the process from being killed when SSH session ends you can do this:
+When running over SSH you can prevent `keep-alive` process from being killed when SSH session ends using:
 
 * If your shell is CMD
 ```bat
