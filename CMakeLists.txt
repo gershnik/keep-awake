@@ -36,7 +36,7 @@ add_compile_options(
     /EHsc
     /bigobj
     "$<$<CONFIG:DEBUG>:/Od;/Ob0>"
-    "$<$<CONFIG:RELWITHDEBINFO>:/O2;/Ob2;/Oi;/Ot;/GT;/Gy;/Qpar;/GL>"
+    "$<$<CONFIG:RELWITHDEBINFO>:/O2;/Ob2;/Oi;/Ot;/GT;/Gy;/Qpar>" #;/GL>"
 )
 
 add_compile_definitions(
@@ -46,7 +46,7 @@ add_compile_definitions(
 
 add_link_options(
     "$<$<CONFIG:DEBUG>:/DEBUG:FASTLINK;/INCREMENTAL>"
-    "$<$<CONFIG:RELWITHDEBINFO>:/DEBUG;/RELEASE;/INCREMENTAL:NO;/OPT:REF;/OPT:ICF;/LTCG:incremental>"
+    "$<$<CONFIG:RELWITHDEBINFO>:/DEBUG;/RELEASE;/INCREMENTAL:NO;/OPT:REF;/OPT:ICF>" #;/LTCG:incremental>"
 )
 
 project(keep-awake)
@@ -57,7 +57,7 @@ set(DECLARED_DEPENDENCIES "")
 
 FetchContent_Declare(argum
     GIT_REPOSITORY  https://github.com/gershnik/argum.git
-    GIT_TAG         v2.2
+    GIT_TAG         v2.6
     GIT_SHALLOW     TRUE
     GIT_PROGRESS    TRUE
 )
