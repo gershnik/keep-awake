@@ -69,7 +69,7 @@ std::wstring myname() {
 void runDirect(const wchar_t * arg) {
 
     HANDLE hOut = GetStdHandle(STD_OUTPUT_HANDLE);
-    HANDLE hErr = GetStdHandle(STD_OUTPUT_HANDLE);
+    HANDLE hErr = GetStdHandle(STD_ERROR_HANDLE);
     
     try {
         ULONG duration = INFINITE;
@@ -121,6 +121,39 @@ void runDirect(const wchar_t * arg) {
     }
 }
 
+class AutoHandle {
+public:
+    AutoHandle() noexcept = default;
+    ~AutoHandle() noexcept {
+        if (m_handle != INVALID_HANDLE_VALUE)
+            CloseHandle(m_handle);
+    }
+    AutoHandle(AutoHandle && src) noexcept : 
+        m_handle(std::exchange(src.m_handle, INVALID_HANDLE_VALUE))
+    {}
+    AutoHandle & operator=(AutoHandle && src) noexcept {
+        if (m_handle != INVALID_HANDLE_VALUE)
+            CloseHandle(m_handle);
+        m_handle = std::exchange(src.m_handle, INVALID_HANDLE_VALUE);
+        return *this;
+    }
+    AutoHandle(const AutoHandle &) = delete;
+    AutoHandle & operator=(const AutoHandle &) = delete;
+
+    HANDLE get() const 
+        { return m_handle; }
+    HANDLE & out() 
+        { return m_handle; }
+    void reset() {
+        if (m_handle != INVALID_HANDLE_VALUE) {
+            CloseHandle(m_handle);
+            m_handle = INVALID_HANDLE_VALUE;
+        }
+    }
+private:
+    HANDLE m_handle = INVALID_HANDLE_VALUE;
+};
+
 int wmain(int argc, wchar_t * argv[]) {
 
     if (argc >= 2 && argv[1] == L"--exec"sv) {
@@ -157,10 +190,13 @@ int wmain(int argc, wchar_t * argv[]) {
         pipeAttr.bInheritHandle = true; 
         pipeAttr.lpSecurityDescriptor = nullptr; 
 
-        HANDLE hRead, hWrite;
-        if (!CreatePipe(&hRead, &hWrite, &pipeAttr, 0))
+        AutoHandle hRead, hWrite;
+        if (!CreatePipe(&hRead.out(), &hWrite.out(), &pipeAttr, 0))
             throw std::system_error(std::error_code(int(GetLastError()), std::system_category()));
-        if (!SetHandleInformation(hRead, HANDLE_FLAG_INHERIT, 0))
+        if (!SetHandleInformation(hRead.get(), HANDLE_FLAG_INHERIT, 0))
+            throw std::system_error(std::error_code(int(GetLastError()), std::system_category()));
+        AutoHandle hErrWrite;
+        if (!DuplicateHandle(GetCurrentProcess(), hWrite.get(), GetCurrentProcess(), &hErrWrite.out(), 0, true, DUPLICATE_SAME_ACCESS))
             throw std::system_error(std::error_code(int(GetLastError()), std::system_category()));
 
 
@@ -168,28 +204,25 @@ int wmain(int argc, wchar_t * argv[]) {
         si.cb = sizeof(si);
         si.dwFlags = STARTF_USESTDHANDLES;
         si.hStdInput = INVALID_HANDLE_VALUE;
-        si.hStdOutput = hWrite;
-        si.hStdError = GetStdHandle(STD_ERROR_HANDLE);
+        si.hStdOutput = hWrite.get();
+        si.hStdError = hErrWrite.get();
         PROCESS_INFORMATION pi;
 
-        if (!CreateProcess(nullptr, &cmd[0], nullptr, nullptr, true, CREATE_DEFAULT_ERROR_MODE | CREATE_NO_WINDOW, nullptr, nullptr, &si, &pi)) {
-            CloseHandle(hRead);
-            CloseHandle(hWrite);
+        if (!CreateProcess(nullptr, &cmd[0], nullptr, nullptr, true, CREATE_DEFAULT_ERROR_MODE | CREATE_NO_WINDOW, nullptr, nullptr, &si, &pi))
             throw std::system_error(std::error_code(int(GetLastError()), std::system_category()));
-        }
+        CloseHandle(pi.hProcess);
+        CloseHandle(pi.hThread);
 
-        CloseHandle(hWrite);
+        hWrite.reset();
+        hErrWrite.reset();
         while (true) {
             char buf[4096];
             DWORD read;
-            if (!ReadFile(hRead, buf, sizeof(buf), &read, nullptr))
+            if (!ReadFile(hRead.get(), buf, sizeof(buf), &read, nullptr))
                 break;
             std::cout << std::string_view(buf, buf + read);
         }
-        CloseHandle(hRead);
-
-        CloseHandle(pi.hProcess);
-        CloseHandle(pi.hThread);
+        
 
         return EXIT_SUCCESS;
 
