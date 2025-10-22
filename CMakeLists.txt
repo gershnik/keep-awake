@@ -87,7 +87,7 @@ string(JSON BUILD_PATCH_VERSION GET ${VERSION_JSON} "BUILD_PATCH_VERSION")
 
 
 add_executable(keep-awake)
-set_target_properties(keep-awake PROPERTIES WIN32_EXECUTABLE TRUE)
+set_target_properties(keep-awake PROPERTIES EXECUTABLE TRUE)
 
 target_link_libraries(keep-awake PRIVATE
     argum
