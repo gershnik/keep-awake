@@ -87,10 +87,20 @@ string(JSON BUILD_PATCH_VERSION GET ${VERSION_JSON} "BUILD_PATCH_VERSION")
 
 
 add_executable(keep-awake)
-set_target_properties(keep-awake PROPERTIES EXECUTABLE TRUE)
+set_target_properties(keep-awake PROPERTIES 
+    EXECUTABLE TRUE
+    CXX_STANDARD 23
+    CXX_STANDARD_REQUIRED TRUE
+)
 
 target_link_libraries(keep-awake PRIVATE
     argum
+    Wtsapi32.lib
+)
+
+target_compile_options(keep-awake PRIVATE
+    /Zc:preprocessor
+    /utf-8
 )
 
 target_compile_definitions(keep-awake PRIVATE

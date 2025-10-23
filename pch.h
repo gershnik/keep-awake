@@ -8,9 +8,12 @@
 #define WIN32_LEAN_AND_MEAN 
 #include <windows.h>
 #include <shellapi.h>
+#include <wtsapi32.h>
 
+#define ARGUM_USE_EXPECTED
 
 #include <argum/parser.h>
 #include <argum/type-parsers.h>
 
 #include <iostream>
+#include <format>
