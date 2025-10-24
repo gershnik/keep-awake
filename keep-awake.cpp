@@ -582,6 +582,14 @@ int wmain(int argc, wchar_t * argv[]) {
                 std::exit(EXIT_SUCCESS);
         }));
         parser.add(
+            WOption(L"--version"). 
+            help(L"report app version and exit"). 
+            handler([&]() {  
+
+                fputs(KEEP_AWAKE_VERSION, stdout);
+                std::exit(EXIT_SUCCESS);
+        }));
+        parser.add(
             WPositional(L"command").
             occurs(neverOrOnce).
             handler([&](const std::wstring_view & value) -> WExpected<void> {

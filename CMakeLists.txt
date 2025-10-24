@@ -117,6 +117,7 @@ target_compile_definitions(keep-awake PRIVATE
     UNICODE
     _UNICODE
     NOMINMAX
+    KEEP_AWAKE_VERSION=\"${BUILD_MAJOR_VERSION}.${BUILD_MINOR_VERSION}.${BUILD_PATCH_VERSION}\"
 )
 
 target_sources(keep-awake PRIVATE
