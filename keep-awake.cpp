@@ -353,6 +353,13 @@ static void runChild() {
     if (!DuplicateHandle(GetCurrentProcess(), hWrite.get(), GetCurrentProcess(), &hErrWrite.out(), 0, true, DUPLICATE_SAME_ACCESS))
         throw std::system_error(std::error_code(int(GetLastError()), std::system_category()));
 
+    if (!SetHandleInformation(GetStdHandle(STD_INPUT_HANDLE), HANDLE_FLAG_INHERIT, 0))
+        throw std::system_error(std::error_code(int(GetLastError()), std::system_category()));
+    if (!SetHandleInformation(GetStdHandle(STD_OUTPUT_HANDLE), HANDLE_FLAG_INHERIT, 0))
+        throw std::system_error(std::error_code(int(GetLastError()), std::system_category()));
+    if (!SetHandleInformation(GetStdHandle(STD_ERROR_HANDLE), HANDLE_FLAG_INHERIT, 0))
+        throw std::system_error(std::error_code(int(GetLastError()), std::system_category()));
+
 
     STARTUPINFOW si{};
     si.cb = sizeof(si);
@@ -362,7 +369,7 @@ static void runChild() {
     si.hStdError = hErrWrite.get();
     PROCESS_INFORMATION pi;
 
-    if (!CreateProcess(exe.data(), GetCommandLine(), nullptr, nullptr, true, CREATE_DEFAULT_ERROR_MODE | CREATE_NO_WINDOW, nullptr, nullptr, &si, &pi))
+    if (!CreateProcess(exe.data(), GetCommandLine(), nullptr, nullptr, true, CREATE_DEFAULT_ERROR_MODE | CREATE_NO_WINDOW | DETACHED_PROCESS, nullptr, nullptr, &si, &pi))
         throw std::system_error(std::error_code(int(GetLastError()), std::system_category()));
     CloseHandle(pi.hProcess);
     CloseHandle(pi.hThread);
