@@ -34,41 +34,81 @@ static std::wstring formatDuration(ULONGLONG val) {
     if (parts[minutes] == 60)   { ++parts[hours];   parts[minutes] = 0; }
     if (parts[hours] == 24)     { ++parts[days];    parts[hours] = 0; }
 
-    size_t i = 0;
-    while(i < std::size(parts) - 1 && parts[i] == 0)
-        ++i;
-    
     std::wstring ret;
-    for ( ; i < std::size(parts); ++i) {
-        ret += std::to_wstring(parts[i]);
-        ret += suffixes[i];
-        ret += L' ';
+    for (size_t i = 0; i < std::size(parts); ++i) {
+        if (parts[i]) {
+            ret += std::to_wstring(parts[i]);
+            ret += suffixes[i];
+            ret += L' ';
+        }
     }
+    if (ret.empty())
+        return L"0s";
     ret.resize(ret.size() - 1);
     return ret;
 }
 
-static std::optional<WExpected<ULONGLONG>> parseDuration(std::wstring_view str) {
+static std::optional<ULONGLONG> parseDuration(std::wstring_view str) {
 
     auto nstr = narrow(str);
 
-    auto m = ctre::match<"([0-9]+)">(nstr);
+    auto m = ctre::match<
+        R"_(\s*)_"
+        R"_((?:([0-9]+)\s*[dD])?)_"
+        R"_(\s*)_"
+        R"_((?:([0-9]+)\s*[hH])?)_"
+        R"_(\s*)_"
+        R"_((?:([0-9]+)\s*[mM])?)_"
+        R"_(\s*)_"
+        R"_((?:([0-9]+)\s*[sS]?)?)_"
+        R"_(\s*)_">(nstr);
+
     if (!m)
         return {};
 
-    auto digits = m.get<1>().to_view();
+    
+    auto parsePart = [](std::string_view digits, unsigned multiple, ULONGLONG & acc) {
+        auto first = digits.data();
+        auto last = first + digits.size();
 
-    auto first = digits.data();
-    auto last = first + digits.size();
+        ULONGLONG val;
+        auto [ptr, ec] = std::from_chars(first, last, val, 10);
+        if (ec != std::errc() || ptr != last)
+            return false;
+        if ((g_maxDuration - acc) / multiple < val)
+            return false;
+        acc += val * multiple;
+        return true;
+    };
 
-    ULONGLONG val;
-    auto [ptr, ec] = std::from_chars(first, last, val, 10);
+    ULONGLONG acc = 0;
+    bool has_value = false;
+    if (auto days = m.get<1>()) {
+        if (!parsePart(days.to_view(), 86'400, acc))
+            return std::numeric_limits<ULONGLONG>::max();
+        has_value = true;
+    }
+    if (auto hours = m.get<2>()) {
+        if (!parsePart(hours.to_view(), 3'600, acc))
+            return std::numeric_limits<ULONGLONG>::max();
+        has_value = true;
+    }
+    if (auto minutes = m.get<3>()) {
+        if (!parsePart(minutes.to_view(), 60, acc))
+            return std::numeric_limits<ULONGLONG>::max();
+        has_value = true;
+    }
+    if (auto seconds = m.get<4>()) {
+        if (!parsePart(seconds.to_view(), 1, acc))
+            return std::numeric_limits<ULONGLONG>::max();
+        has_value = true;
+    }
 
-    if (ec != std::errc() || ptr != last || val > g_maxDuration)
-        return {{Failure<WParser::ValidationError>, std::format(L"duration \"{}\" is too large (must be less than {})", str, g_maxDuration)}};
+    if (!has_value)
+        return {};
 
-    val *= 1000;
-    return val;
+    acc *= 1000;
+    return acc;
 }
 
 static std::wstring myname() {
@@ -225,8 +265,8 @@ static void runDirect(std::optional<ULONGLONG> duration) {
             throw std::system_error(std::error_code(int(GetLastError()), std::system_category()));
 
         fputws((duration ? 
-                std::format(L"preventing sleep for {0} or untill process {1} is killed\n", formatDuration(*duration), GetCurrentProcessId()) : 
-                std::format(L"preventing sleep indefinitely or untill process {0} is killed\n", GetCurrentProcessId())).c_str(),
+                std::format(L"preventing sleep for {0} or untill process {1} is stopped\n", formatDuration(*duration), GetCurrentProcessId()) : 
+                std::format(L"preventing sleep indefinitely or untill process {0} is stopped\n", GetCurrentProcessId())).c_str(),
                stdout);
 
         (void)freopen("NUL:", "w", stdout);
@@ -472,10 +512,11 @@ int wmain(int argc, wchar_t * argv[]) {
             handler([&](const std::wstring_view & value) -> WExpected<void> {
                 if (value == L"list" || value == L"stop") {
                     command = value;
-                } else if (auto maybeRes = parseDuration(value)) {
-                    if (!*maybeRes)
-                        return *maybeRes;
-                    duration = **maybeRes;
+                } else if (auto maybeVal = parseDuration(value)) {
+                    auto val = *maybeVal;
+                    if (val > 86'400'000 * 365ull)
+                        return {Failure<WParser::ValidationError>, std::format(L"duration \"{}\" is too large (do you really want to prevent sleep for more than a year?)", value)};
+                    duration = val;
                 } else {
                     return {Failure<WParser::UnrecognizedOption>, value};
                 }
