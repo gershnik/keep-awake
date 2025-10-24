@@ -36,7 +36,7 @@ add_compile_options(
     /EHsc
     /bigobj
     "$<$<CONFIG:DEBUG>:/Od;/Ob0>"
-    "$<$<CONFIG:RELWITHDEBINFO>:/O2;/Ob2;/Oi;/Ot;/GT;/Gy;/Qpar>" #;/GL>"
+    "$<$<CONFIG:RELWITHDEBINFO>:/O2;/Ob3;/Oi;/Os;/GT;/Gy;/Qpar>" #;/GL>"
 )
 
 add_compile_definitions(
