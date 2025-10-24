@@ -181,6 +181,17 @@ private:
 using AutoHandle = BasicAutoHandle<nullptr>;
 using AutoFile = BasicAutoHandle<INVALID_HANDLE_VALUE>;
 
+struct LocalAllocDeleter {
+	void operator()(void * ptr) { LocalFree(ptr); }
+};
+
+template<class T>
+requires(
+	(!std::is_array_v<T> && std::is_trivially_destructible_v<T>) ||
+	(std::is_array_v<T> && std::is_trivially_destructible_v<std::remove_all_extents_t<T>>)
+)
+using unqiue_local_membuf = std::unique_ptr<T, LocalAllocDeleter>;
+
 static std::wstring makePipeName(DWORD procId) {
     return std::format(L"\\\\.\\pipe\\{}-{}", g_myGuid, procId);
 }
@@ -409,19 +420,74 @@ static bool kill(DWORD procId) {
     return execOnPipe(procId, "stop", [] (HANDLE) {});
 }
 
+static std::wstring sidToUsername(PSID psid) {
+    std::wstring name, domain;
+
+    while (true) {
+        DWORD nameSize = DWORD(name.size()), domainSize = DWORD(domain.size());
+        SID_NAME_USE use;
+        if (LookupAccountSidW(nullptr, psid, name.data(), &nameSize, domain.data(), &domainSize, &use)) {
+            name.resize(wcslen(name.c_str()));
+            domain.resize(wcslen(domain.c_str()));
+            break;
+        }
+        auto err = GetLastError();
+        if (err != ERROR_INSUFFICIENT_BUFFER) {
+            unqiue_local_membuf<wchar_t> stringSid;
+            if (!ConvertSidToStringSidW(psid, std::out_ptr(stringSid)))
+                return L"<unknown>";
+            return stringSid.get();
+        }
+        name.resize(nameSize);
+        domain.resize(domainSize);
+    }
+    return domain + L'\\' + name;
+}
+
 static void listProcesses() {
     WTS_PROCESS_INFO * pi;
     DWORD count;
     if (!WTSEnumerateProcesses(WTS_CURRENT_SERVER_HANDLE, 0, 1, &pi, &count))
         throw std::system_error(std::error_code(int(GetLastError()), std::system_category()));
-    fputws(L"      PID  SESSION   REMAINING\n", stdout);
+
+    size_t widths[4] = {9, 16, 7, 10};
+    enum Align {
+        left,
+        right
+    } aligns[std::size(widths)] = {right, left, right, right};
+    using Row = std::array<std::wstring, std::size(widths)>;
+    std::vector<Row> table;
+
+    auto addRow = [&](Row && row) {
+        for(size_t i = 0; i < row.size(); ++i) {
+            widths[i] = std::max(widths[i], row[i].size());
+        }
+        table.push_back(std::move(row));
+    };
+    
+
+    addRow({L"PID", L"USER", L"SESSION", L"REMAINING"});
     for(DWORD i = 0; i < count; ++i) {
         auto & info = pi[i];
         if (info.pProcessName == L"keep-awake.exe"sv) {
             if (auto remaining = getInfo(pi[i].ProcessId)) {
-                fputws(std::format(L"{:>9}  {:>7}  {:>10}\n", pi[i].ProcessId, pi[i].SessionId, *remaining).c_str(), stdout);
+                addRow({std::to_wstring(pi[i].ProcessId), sidToUsername(pi[i].pUserSid), std::to_wstring(pi[i].SessionId), *remaining});
             }
         }
+    }
+
+    for (auto & row: table) {
+        for(size_t i = 0; i < row.size(); ++i) {
+            std::wstring padding(widths[i] - row[i].size(), L' ');
+            if (aligns[i] == left)
+                row[i] = row[i] + padding;
+            else
+                row[i] = padding + row[i];
+        }
+    }
+
+    for (auto & row: table) {
+        fputws(std::format(L"{}  {}  {}  {}\n", row[0], row[1], row[2], row[3]).c_str(), stdout);
     }
 }
 

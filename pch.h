@@ -11,6 +11,7 @@
 #include <windows.h>
 #include <shellapi.h>
 #include <wtsapi32.h>
+#include <sddl.h>
 
 #define ARGUM_USE_EXPECTED
 
