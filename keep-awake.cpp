@@ -1,18 +1,27 @@
 using namespace Argum;
 using namespace std::literals;
 
+constexpr auto g_maxDuration = std::numeric_limits<ULONGLONG>::max() / 1000;
 
-std::wstring widen(std::string_view str) {
+
+static std::wstring widen(std::string_view str) {
     int size_needed = MultiByteToWideChar(CP_UTF8, 0, str.data(), int(str.size()), nullptr, 0);
     std::wstring ret(size_needed, 0);
     MultiByteToWideChar(CP_UTF8, 0, str.data(), int(str.size()), ret.data(), size_needed);
     return ret;
 }
 
-std::string formatDuration(ULONGLONG val) {
+static std::string narrow(std::wstring_view str) {
+    int size_needed = WideCharToMultiByte(CP_UTF8, 0, str.data(), int(str.size()), nullptr, 0, nullptr, nullptr);
+    std::string ret(size_needed, 0);
+    WideCharToMultiByte(CP_UTF8, 0, str.data(), int(str.size()), ret.data(), size_needed, nullptr, nullptr);
+    return ret;
+}
+
+static std::wstring formatDuration(ULONGLONG val) {
     ULONGLONG parts[4] = {};
     enum { days, hours, minutes, seconds };
-    const char suffixes[std::size(parts)] = { 'd', 'h', 'm', 's' };
+    const wchar_t suffixes[std::size(parts)] = { L'd', L'h', L'm', L's' };
 
     parts[days]     = val / 86'400'000; val %= 86'400'000ull;
     parts[hours]    = val / 3'600'000;  val %= 3'600'000;
@@ -28,46 +37,17 @@ std::string formatDuration(ULONGLONG val) {
     while(i < std::size(parts) - 1 && parts[i] == 0)
         ++i;
     
-    std::string ret;
+    std::wstring ret;
     for ( ; i < std::size(parts); ++i) {
-        ret += std::to_string(parts[i]);
+        ret += std::to_wstring(parts[i]);
         ret += suffixes[i];
-        ret += ' ';
+        ret += L' ';
     }
     ret.resize(ret.size() - 1);
     return ret;
 }
 
-//std::wstring cmdQuote(std::wstring_view str) {
-//    std::wstring ret;
-//    bool enquote = false;
-//    for (size_t i = 0; i < str.size(); ++i) {
-//        wchar_t c = str[i];
-//        switch (c) {
-//        break; case L' ': 
-//            enquote = true; 
-//        break; case L'\\': {
-//            size_t after = str.find_first_not_of(L'\\', i);
-//            if (after != str.npos && str[after] == L'"') {
-//                ret.append((after - i) * 2 + 1, L'\\');
-//                ret += L'"';
-//                i = after;
-//                continue;
-//            }
-//        }   
-//        break; case L'"':
-//            ret += L'"';
-//        }
-//        ret += c;
-//    }
-//    if (enquote) {
-//        ret.insert(0, 1, L'"');
-//        ret += L'"';
-//    }
-//    return ret;
-//}
-
-std::wstring myname() {
+static std::wstring myname() {
     std::wstring ret;
 
     DWORD size = 32;
@@ -139,10 +119,9 @@ using AutoFile = BasicAutoHandle<INVALID_HANDLE_VALUE>;
 
 constexpr auto g_myGuid = L"BAF0674F-E091-468A-AAA9-234909F4CFFB";
 
-std::wstring makePipeName(DWORD procId) {
+static std::wstring makePipeName(DWORD procId) {
     return std::format(L"\\\\.\\pipe\\{}-{}", g_myGuid, procId);
 }
-
 
 
 class WaitTracker {
@@ -163,7 +142,7 @@ public:
                 auto elapsed = GetTickCount64() - m_start;
                 if (elapsed >= *m_duration)
                     return false;
-                wait_time = std::min(ULONGLONG(wait_time), *m_duration - elapsed);
+                wait_time = DWORD(std::min(ULONGLONG(wait_time), *m_duration - elapsed));
             }
             auto res = WaitForSingleObject(h, wait_time);
             if (res == WAIT_TIMEOUT)
@@ -174,9 +153,9 @@ public:
         }
     }
 
-    std::string formatRemaining() const {
+    std::wstring formatRemaining() const {
         if (!m_duration)
-            return "Infinite";
+            return L"Infinite";
         auto elapsed = GetTickCount64() - m_start;
         ULONGLONG remaining = (elapsed <= *m_duration ? *m_duration - elapsed : 0);
         return formatDuration(remaining);
@@ -187,81 +166,50 @@ private:
 };
 
 
-void writeInfo(HANDLE hPipe, const WaitTracker & tracker) {
-    std::string reply = tracker.formatRemaining();
-    for(DWORD total = 0; total < reply.size(); ) {
+static void writeInfo(HANDLE hPipe, const WaitTracker & tracker) {
+    std::string reply = narrow(tracker.formatRemaining());
+    auto size = DWORD(reply.size());
+    for(DWORD total = 0; total < size; ) {
         DWORD written;
-        if (!WriteFile(hPipe, reply.data() + total, reply.size() - total, &written, nullptr))
+        if (!WriteFile(hPipe, (const BYTE *)reply.data() + total, size - total, &written, nullptr))
             break;
         total += written;
     }
     FlushFileBuffers(hPipe);
 }
 
-void runDirect(const wchar_t * arg) {
+static void runDirect(std::optional<ULONGLONG> duration) {
 
     //Sleep(15000);
     
-
-    HANDLE hOut = GetStdHandle(STD_OUTPUT_HANDLE);
-    HANDLE hErr = GetStdHandle(STD_ERROR_HANDLE);
-
-    
-    auto print = [hOut](std::wstring_view message) {
-        if (hOut != 0 && hOut != INVALID_HANDLE_VALUE) {
-            DWORD written;
-            WriteFile(hOut, message.data(), message.size() * sizeof(wchar_t), &written, nullptr);
-        }
-    };
-    auto printerr = [hErr](std::wstring_view message) {
-        if (hErr != 0 && hErr != INVALID_HANDLE_VALUE) {
-            DWORD written;
-            WriteFile(hErr, message.data(), message.size() * sizeof(wchar_t), &written, nullptr);
-        }
-    };
-
-    AutoFile hPipe =  CreateNamedPipeW(makePipeName(GetCurrentProcessId()).c_str(),
-                                       PIPE_ACCESS_DUPLEX | FILE_FLAG_FIRST_PIPE_INSTANCE | FILE_FLAG_OVERLAPPED, 
-                                       PIPE_TYPE_BYTE | PIPE_READMODE_BYTE | PIPE_WAIT | PIPE_REJECT_REMOTE_CLIENTS,
-                                       PIPE_UNLIMITED_INSTANCES, 4096, 0, 
-                                       NMPWAIT_USE_DEFAULT_WAIT, nullptr);
-    if (!hPipe) {
-        printerr(L"child process: error creating pipe: " + widen(std::error_code(int(GetLastError()), std::system_category()).message()));
-    }
-    
     try {
+
+        AutoFile hPipe =  CreateNamedPipeW(makePipeName(GetCurrentProcessId()).c_str(),
+            PIPE_ACCESS_DUPLEX | FILE_FLAG_FIRST_PIPE_INSTANCE | FILE_FLAG_OVERLAPPED, 
+            PIPE_TYPE_BYTE | PIPE_READMODE_BYTE | PIPE_WAIT | PIPE_REJECT_REMOTE_CLIENTS,
+            PIPE_UNLIMITED_INSTANCES, 4096, 0, 
+            NMPWAIT_USE_DEFAULT_WAIT, nullptr);
+        if (!hPipe) {
+            fputws(std::format(L"child process: error creating pipe: {}", widen(std::error_code(int(GetLastError()), std::system_category()).message())).c_str(), stderr);
+        }
 
         AutoHandle hEvent = CreateEvent(nullptr, true, true, nullptr);
         if (!hEvent)
             throw std::system_error(std::error_code(int(GetLastError()), std::system_category()));
 
-        std::optional<ULONGLONG> duration;
-        if (arg) {
-            ULONGLONG seconds = parseIntegral<ULONGLONG>(arg).value();
-            if (std::numeric_limits<ULONGLONG>::max() / 1000 < seconds)
-                throw WParser::ValidationError(format(Messages<wchar_t>::outOfRange(), arg));
-            duration = seconds * 1000;
-        }
-
+        
         auto oldState = SetThreadExecutionState(ES_CONTINUOUS | ES_SYSTEM_REQUIRED);
         if (oldState == 0)
             throw std::system_error(std::error_code(int(GetLastError()), std::system_category()));
 
-        print(duration ? 
-                format(L"preventing sleep for {1} seconds or untill process {2} is killed\n", arg, GetCurrentProcessId()) : 
-                format(L"preventing sleep indefinitely or untill process {1} is killed\n", GetCurrentProcessId()));
+        fputws((duration ? 
+                std::format(L"preventing sleep for {0} or untill process {1} is killed\n", formatDuration(*duration), GetCurrentProcessId()) : 
+                std::format(L"preventing sleep indefinitely or untill process {0} is killed\n", GetCurrentProcessId())).c_str(),
+               stdout);
 
-        if (hOut != 0 && hOut != INVALID_HANDLE_VALUE) {
-            CloseHandle(hOut);
-            hOut = INVALID_HANDLE_VALUE;
-            SetStdHandle(STD_OUTPUT_HANDLE, hOut);
-        }
-        if (hErr != 0 && hErr != INVALID_HANDLE_VALUE) {
-            CloseHandle(hErr);
-            hErr = INVALID_HANDLE_VALUE;
-            SetStdHandle(STD_ERROR_HANDLE, hOut);
-        }
-
+        (void)freopen("NUL:", "w", stdout);
+        (void)freopen("NUL:", "w", stderr);
+        
         WaitTracker tracker(duration);
         
         while(!tracker.isDone()) {
@@ -286,10 +234,10 @@ void runDirect(const wchar_t * arg) {
                 
             std::string command(4, '\0');
             DWORD read;
-            if (ReadFile(hPipe.get(), command.data(), command.size(), &read, nullptr) && read == 4) {
+            if (ReadFile(hPipe.get(), command.data(), DWORD(command.size()), &read, nullptr) && read == 4) {
                 if (command == "info") {
                     writeInfo(hPipe.get(), tracker);
-                } else if (command == "kill") {
+                } else if (command == "stop") {
                     break;
                 }
             }
@@ -303,16 +251,16 @@ void runDirect(const wchar_t * arg) {
     } catch(WParsingException & ex) {
         std::wstring message = L"child process error: ";
         message += ex.message();
-        printerr(message);
+        fputws(message.c_str(), stderr);
     } catch (std::exception & ex) {
-        printerr(L"child process error: " + widen(ex.what()));
+        std::wstring message = L"child process error: ";
+        message += widen(ex.what());
+        fputws(message.c_str(), stderr);
     }
 }
 
 
-
-
-void runChild(std::optional<ULONGLONG> duration) {
+static void runChild() {
     if (!SetEnvironmentVariable(g_myGuid, L"ON"))
         throw std::system_error(std::error_code(int(GetLastError()), std::system_category()));
 
@@ -353,11 +301,11 @@ void runChild(std::optional<ULONGLONG> duration) {
         DWORD read;
         if (!ReadFile(hRead.get(), buf, sizeof(buf), &read, nullptr))
             break;
-        std::cout << std::string_view(buf, buf + read);
+        fwrite(buf, 1, read, stdout);
     }
 }
 
-bool execOnPipe(DWORD procId, std::string_view cmd, std::invocable<HANDLE> auto && proc) {
+static bool execOnPipe(DWORD procId, std::string_view cmd, std::invocable<HANDLE> auto && proc) {
     std::wstring pipeName = makePipeName(procId);
     while(true) {
         AutoFile hPipe = CreateFile(pipeName.c_str(), GENERIC_READ | GENERIC_WRITE, 0, nullptr, OPEN_EXISTING, 0, nullptr);
@@ -370,7 +318,7 @@ bool execOnPipe(DWORD procId, std::string_view cmd, std::invocable<HANDLE> auto 
             }
         }
         DWORD written;
-        if (!WriteFile(hPipe.get(), cmd.data(), cmd.size(), &written, nullptr) || written != cmd.size())
+        if (!WriteFile(hPipe.get(), cmd.data(), DWORD(cmd.size()), &written, nullptr) || written != cmd.size())
             return false;
         if constexpr (std::is_convertible_v<decltype(std::forward<decltype(proc)>(proc)(hPipe.get())), bool>)
             return std::forward<decltype(proc)>(proc)(hPipe.get());
@@ -381,48 +329,106 @@ bool execOnPipe(DWORD procId, std::string_view cmd, std::invocable<HANDLE> auto 
     }
 }
 
-std::optional<std::string> getInfo(DWORD procId) {
+static std::optional<std::wstring> getInfo(DWORD procId) {
     std::string buf(256, '\0');
     if (!execOnPipe(procId, "info", [&buf](HANDLE hPipe) {
             DWORD read;
-            if (!ReadFile(hPipe, buf.data(), buf.size(), &read, nullptr))
+            if (!ReadFile(hPipe, buf.data(), DWORD(buf.size()), &read, nullptr))
                 return false;
             buf.resize(read);
             return true;
         }))
         return {};
 
-    return buf;
+    return widen(buf);
 }
 
-bool kill(DWORD procId) {
-    return execOnPipe(procId, "kill", [] (HANDLE) {});
+static bool kill(DWORD procId) {
+    return execOnPipe(procId, "stop", [] (HANDLE) {});
 }
 
-void listProcesses() {
+static void listProcesses() {
     WTS_PROCESS_INFO * pi;
     DWORD count;
     if (!WTSEnumerateProcesses(WTS_CURRENT_SERVER_HANDLE, 0, 1, &pi, &count))
         throw std::system_error(std::error_code(int(GetLastError()), std::system_category()));
-    std::cout << "      PID  SESSION   REMAINING\n";
+    fputws(L"      PID  SESSION   REMAINING\n", stdout);
     for(DWORD i = 0; i < count; ++i) {
         auto & info = pi[i];
         if (info.pProcessName == L"keep-awake.exe"sv) {
-            if (auto info = getInfo(pi[i].ProcessId)) {
-                std::cout << std::format("{:>9}  {:>7}  {:>10}\n", pi[i].ProcessId, pi[i].SessionId, *info);
+            if (auto remaining = getInfo(pi[i].ProcessId)) {
+                fputws(std::format(L"{:>9}  {:>7}  {:>10}\n", pi[i].ProcessId, pi[i].SessionId, *remaining).c_str(), stdout);
             }
         }
     }
 }
 
+static void normalizeStdIO() noexcept {
+
+    std::tuple<DWORD, int> stdHandles[] = {
+        {STD_OUTPUT_HANDLE, 1},
+        {STD_ERROR_HANDLE, 2}
+    };
+
+    for(auto [id, desc]: stdHandles) {
+        auto handle = GetStdHandle(id);
+        if (handle != nullptr && handle != INVALID_HANDLE_VALUE && HANDLE(_get_osfhandle(desc)) != handle) {
+        
+            HANDLE uniqueHandle = INVALID_HANDLE_VALUE;
+            if (!DuplicateHandle(GetCurrentProcess(), handle, GetCurrentProcess(), &uniqueHandle, 0, true, DUPLICATE_SAME_ACCESS))
+                continue;
+            auto fd = _open_osfhandle(intptr_t(uniqueHandle), 0);
+            if (fd < 0) {
+                CloseHandle(uniqueHandle);
+                continue;
+            }
+            auto dupres = _dup2(fd, desc);
+            _close(fd);
+            if (dupres != 0)
+                continue;
+            SetStdHandle(id, uniqueHandle);
+            CloseHandle(handle);
+        }
+    }
+
+}
+
+static std::wstring usage(const wchar_t * progname) {
+    return std::format(
+LR"_(Usage: 
+    {0} [duration] 
+    {0} list
+    {0} stop pid [pid ...]
+    {0} --help
+)_", progname);
+}
+
+static std::wstring help(const wchar_t * argv0) {
+    std::wstring ret = usage(argv0);
+    ret += 
+LR"_(
+positional arguments:
+  duration    how long to keep computer awake in milliseconds.
+              If omitted, keep it awake indefinitely.
+  list        show info about currently active keep-awake instances
+  stop        stop keep-awake instances given by pid arguments
+
+options:
+  --help, -h  show this help message and exit
+)_";
+    return ret;
+}
+
 int wmain(int argc, wchar_t * argv[]) {
 
-    auto myenv = _wgetenv(g_myGuid);
 
-    if (argc >= 1 && myenv && myenv == L"ON"sv) {
-        runDirect(argc > 1 ? argv[1] : nullptr);
-        return EXIT_SUCCESS;
-    }
+    //Sleep(15000);
+
+    normalizeStdIO();
+
+    auto myenv = _wgetenv(g_myGuid);
+    bool isChild = myenv && myenv == L"ON"sv;
+    auto progname = argc ? argv[0] : L"keep-awake";
 
     std::optional<ULONGLONG> duration;
     std::optional<std::wstring> command;
@@ -435,19 +441,19 @@ int wmain(int argc, wchar_t * argv[]) {
             help(L"show this help message and exit"). 
             handler([&]() {  
 
-                std::wcout << parser.formatHelp(argc ? argv[0] : L"keep-awake");
+                fputws(help(progname).c_str(), stdout);
                 std::exit(EXIT_SUCCESS);
         }));
         parser.add(
             WPositional(L"command").
             occurs(neverOrOnce).
             handler([&](const std::wstring_view & value) -> WExpected<void> {
-                if (value == L"list" || value == L"kill") {
+                if (value == L"list" || value == L"stop") {
                     command = value;
                 } else if (auto maybeVal = parseIntegral<ULONGLONG>(value)) {
-                    if (std::numeric_limits<ULONGLONG>::max() / 1000 < *maybeVal)
-                        return {Failure<WParser::ValidationError>, format(Messages<wchar_t>::outOfRange(), value)};
-                    duration = *maybeVal;
+                    if (g_maxDuration < *maybeVal)
+                        return {Failure<WParser::ValidationError>, std::format(L"duration \"{}\" is out of range (must be between 0 and {})", value, g_maxDuration)};
+                    duration = *maybeVal * 1000;
                 } else {
                     return {Failure<WParser::UnrecognizedOption>, value};
                 }
@@ -458,24 +464,25 @@ int wmain(int argc, wchar_t * argv[]) {
             occurs(zeroOrMoreTimes).
             handler([&](const std::wstring_view & value) -> WExpected<void> {
 
-                if (command && *command == L"kill") {
+                if (command && *command == L"stop") {
                     pidsToKill.push_back(parseIntegral<DWORD>(value).value());
                     return {};
                 } 
                     
                 return {Failure<WParser::ExtraPositional>, value};                
         }));
-        parser.addValidator([&](const WValidationData & data) {
-            return !command || *command != L"kill" || !pidsToKill.empty();
-        }, L"kill command requires PID arguments");
+        parser.addValidator([&](const WValidationData & ) {
+            return !command || *command != L"stop" || !pidsToKill.empty();
+        }, L"stop command requires PID arguments");
         
         auto result = parser.parse(argc, argv);
         if (auto err = result.error()) {
             std::wstring message;
             message += err->message();
             message += L"\n\n";
-            message += parser.formatUsage(argc ? argv[0] : L"keep-awake");
-            std::wcerr << message << L'\n';
+            message += usage(progname);
+            message += '\n';
+            fputws(message.c_str(), stderr);
             return EXIT_FAILURE;
         }
         
@@ -486,23 +493,26 @@ int wmain(int argc, wchar_t * argv[]) {
                 return EXIT_SUCCESS;
             } 
 
-            assert(*command == L"kill");
+            assert(*command == L"stop");
             assert(!pidsToKill.empty());
             for(auto pid: pidsToKill) {
                 if (kill(pid))
-                    std::cout << "kill request successfully sent to process " << pid << '\n';
+                    fputws(std::format(L"stop request successfully sent to process {}\n", pid).c_str(), stdout);
                 else
-                    std::cout << "unable to send kill request to process " << pid << '\n';
+                    fputws(std::format(L"unable to send stop request to process {}\n", pid).c_str(), stdout);
             }
             return EXIT_SUCCESS;
         }
         
-        runChild(duration);
+        if (isChild)
+            runDirect(duration);
+        else
+            runChild();
 
         return EXIT_SUCCESS;
 
     } catch (std::exception & ex) {
-        std::cerr << ex.what() << '\n';
+        fputws(std::format(L"{}: {}", progname, widen(ex.what())).c_str(), stderr);
     }
     return EXIT_FAILURE;
 }

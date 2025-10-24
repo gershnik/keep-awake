@@ -99,6 +99,7 @@ target_link_libraries(keep-awake PRIVATE
 )
 
 target_compile_options(keep-awake PRIVATE
+    /W4;/WX
     /Zc:preprocessor
     /utf-8
 )
