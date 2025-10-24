@@ -353,12 +353,14 @@ static void runChild() {
     if (!DuplicateHandle(GetCurrentProcess(), hWrite.get(), GetCurrentProcess(), &hErrWrite.out(), 0, true, DUPLICATE_SAME_ACCESS))
         throw std::system_error(std::error_code(int(GetLastError()), std::system_category()));
 
-    if (!SetHandleInformation(GetStdHandle(STD_INPUT_HANDLE), HANDLE_FLAG_INHERIT, 0))
-        throw std::system_error(std::error_code(int(GetLastError()), std::system_category()));
-    if (!SetHandleInformation(GetStdHandle(STD_OUTPUT_HANDLE), HANDLE_FLAG_INHERIT, 0))
-        throw std::system_error(std::error_code(int(GetLastError()), std::system_category()));
-    if (!SetHandleInformation(GetStdHandle(STD_ERROR_HANDLE), HANDLE_FLAG_INHERIT, 0))
-        throw std::system_error(std::error_code(int(GetLastError()), std::system_category()));
+    for(DWORD id: {STD_INPUT_HANDLE, STD_OUTPUT_HANDLE, STD_ERROR_HANDLE}) {
+        auto h = GetStdHandle(id);
+        if (h == nullptr || h == INVALID_HANDLE_VALUE)
+            continue;
+        if (!SetHandleInformation(h, HANDLE_FLAG_INHERIT, 0))
+            throw std::system_error(std::error_code(int(GetLastError()), std::system_category()));
+    }
+    
 
 
     STARTUPINFOW si{};
