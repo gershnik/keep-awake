@@ -2,6 +2,7 @@ using namespace Argum;
 using namespace std::literals;
 
 constexpr auto g_maxDuration = std::numeric_limits<ULONGLONG>::max() / 1000;
+constexpr auto g_myGuid = L"BAF0674F-E091-468A-AAA9-234909F4CFFB";
 
 
 static std::wstring widen(std::string_view str) {
@@ -45,6 +46,29 @@ static std::wstring formatDuration(ULONGLONG val) {
     }
     ret.resize(ret.size() - 1);
     return ret;
+}
+
+static std::optional<WExpected<ULONGLONG>> parseDuration(std::wstring_view str) {
+
+    auto nstr = narrow(str);
+
+    auto m = ctre::match<"([0-9]+)">(nstr);
+    if (!m)
+        return {};
+
+    auto digits = m.get<1>().to_view();
+
+    auto first = digits.data();
+    auto last = first + digits.size();
+
+    ULONGLONG val;
+    auto [ptr, ec] = std::from_chars(first, last, val, 10);
+
+    if (ec != std::errc() || ptr != last || val > g_maxDuration)
+        return {{Failure<WParser::ValidationError>, std::format(L"duration \"{}\" is too large (must be less than {})", str, g_maxDuration)}};
+
+    val *= 1000;
+    return val;
 }
 
 static std::wstring myname() {
@@ -116,8 +140,6 @@ private:
 
 using AutoHandle = BasicAutoHandle<nullptr>;
 using AutoFile = BasicAutoHandle<INVALID_HANDLE_VALUE>;
-
-constexpr auto g_myGuid = L"BAF0674F-E091-468A-AAA9-234909F4CFFB";
 
 static std::wstring makePipeName(DWORD procId) {
     return std::format(L"\\\\.\\pipe\\{}-{}", g_myGuid, procId);
@@ -450,10 +472,10 @@ int wmain(int argc, wchar_t * argv[]) {
             handler([&](const std::wstring_view & value) -> WExpected<void> {
                 if (value == L"list" || value == L"stop") {
                     command = value;
-                } else if (auto maybeVal = parseIntegral<ULONGLONG>(value)) {
-                    if (g_maxDuration < *maybeVal)
-                        return {Failure<WParser::ValidationError>, std::format(L"duration \"{}\" is out of range (must be between 0 and {})", value, g_maxDuration)};
-                    duration = *maybeVal * 1000;
+                } else if (auto maybeRes = parseDuration(value)) {
+                    if (!*maybeRes)
+                        return *maybeRes;
+                    duration = **maybeRes;
                 } else {
                     return {Failure<WParser::UnrecognizedOption>, value};
                 }

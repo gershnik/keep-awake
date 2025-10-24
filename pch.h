@@ -17,5 +17,7 @@
 #include <argum/parser.h>
 #include <argum/type-parsers.h>
 
+#include <ctre.hpp>
+
 #include <format>
 #include <io.h>
