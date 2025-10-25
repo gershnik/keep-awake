@@ -19,6 +19,105 @@ static std::string narrow(std::wstring_view str) {
     return ret;
 }
 
+template<HANDLE InvalidValue>
+class BasicAutoHandle {
+public:
+    BasicAutoHandle() noexcept = default;
+    BasicAutoHandle(HANDLE h) noexcept :
+        m_handle(h)
+    {}
+    ~BasicAutoHandle() noexcept {
+        if (m_handle != InvalidValue)
+            CloseHandle(m_handle);
+    }
+    BasicAutoHandle(BasicAutoHandle && src) noexcept : 
+        m_handle(std::exchange(src.m_handle, InvalidValue))
+    {}
+    BasicAutoHandle & operator=(BasicAutoHandle && src) noexcept {
+        if (m_handle != InvalidValue)
+            CloseHandle(m_handle);
+        m_handle = std::exchange(src.m_handle, InvalidValue);
+        return *this;
+    }
+    BasicAutoHandle(const BasicAutoHandle &) = delete;
+    BasicAutoHandle & operator=(const BasicAutoHandle &) = delete;
+
+    HANDLE get() const 
+        { return m_handle; }
+    HANDLE & out() 
+        { return m_handle; }
+    void reset() {
+        if (m_handle != InvalidValue) {
+            CloseHandle(m_handle);
+            m_handle = InvalidValue;
+        }
+    }
+    explicit operator bool() const 
+        { return m_handle != InvalidValue; }
+private:
+    HANDLE m_handle = InvalidValue;
+};
+
+using AutoHandle = BasicAutoHandle<nullptr>;
+using AutoFile = BasicAutoHandle<INVALID_HANDLE_VALUE>;
+
+struct LocalAllocDeleter {
+	void operator()(void * ptr) { LocalFree(ptr); }
+};
+
+template<class T>
+requires(
+	(!std::is_array_v<T> && std::is_trivially_destructible_v<T>) ||
+	(std::is_array_v<T> && std::is_trivially_destructible_v<std::remove_all_extents_t<T>>)
+)
+using unqiue_local_membuf = std::unique_ptr<T, LocalAllocDeleter>;
+
+static std::wstring win32ErrorMessage(DWORD err) {
+    return widen(std::error_code(int(err), std::system_category()).message());
+}
+
+[[noreturn]]
+static inline void throwWin32Error(DWORD err, const char * doingWhat) {
+    throw std::system_error(std::error_code(int(err), std::system_category()), doingWhat);
+}
+
+[[noreturn]]
+static inline void throwLastError(const char * doingWhat) {
+    throwWin32Error(GetLastError(), doingWhat);
+}
+
+static std::wstring myname() {
+    std::wstring ret;
+
+    DWORD size = 32;
+    for( ; ; ) {
+        ret.resize(size);
+        auto res = GetModuleFileNameW(nullptr, ret.data(), size);
+        if (res < size) {
+            ret.resize(res);
+            break;
+        }
+        auto err = GetLastError();
+        if (err == NO_ERROR)
+            break;
+        if (err == ERROR_INSUFFICIENT_BUFFER) {
+            if (err < std::numeric_limits<DWORD>::max() / 2)
+                size *= 2;
+            else if (err < std::numeric_limits<DWORD>::max() - 32)
+                size += 32;
+            else
+                throw std::bad_alloc();
+            continue;
+        }
+        throwWin32Error(err, "GetModuleFileName(nullptr)");
+    }
+    return ret;
+}
+
+static std::wstring makePipeName(DWORD procId) {
+    return std::format(L"\\\\.\\pipe\\{}-{}", g_myGuid, procId);
+}
+
 static std::wstring formatDuration(ULONGLONG val) {
     ULONGLONG parts[4] = {};
     enum { days, hours, minutes, seconds };
@@ -111,91 +210,6 @@ static std::optional<ULONGLONG> parseDuration(std::wstring_view str) {
     return acc;
 }
 
-static std::wstring myname() {
-    std::wstring ret;
-
-    DWORD size = 32;
-    for( ; ; ) {
-        ret.resize(size);
-        auto res = GetModuleFileNameW(0, ret.data(), size);
-        if (res < size) {
-            ret.resize(res);
-            break;
-        }
-        auto err = GetLastError();
-        if (err == NO_ERROR)
-            break;
-        if (err == ERROR_INSUFFICIENT_BUFFER) {
-            if (err < std::numeric_limits<DWORD>::max() / 2)
-                size *= 2;
-            else if (err < std::numeric_limits<DWORD>::max() - 32)
-                size += 32;
-            else
-                throw std::bad_alloc();
-            continue;
-        }
-        throw std::system_error(std::error_code(err, std::system_category()));
-    }
-    return ret;
-}
-
-template<HANDLE InvalidValue>
-class BasicAutoHandle {
-public:
-    BasicAutoHandle() noexcept = default;
-    BasicAutoHandle(HANDLE h) noexcept :
-        m_handle(h)
-    {}
-    ~BasicAutoHandle() noexcept {
-        if (m_handle != InvalidValue)
-            CloseHandle(m_handle);
-    }
-    BasicAutoHandle(BasicAutoHandle && src) noexcept : 
-        m_handle(std::exchange(src.m_handle, InvalidValue))
-    {}
-    BasicAutoHandle & operator=(BasicAutoHandle && src) noexcept {
-        if (m_handle != InvalidValue)
-            CloseHandle(m_handle);
-        m_handle = std::exchange(src.m_handle, InvalidValue);
-        return *this;
-    }
-    BasicAutoHandle(const BasicAutoHandle &) = delete;
-    BasicAutoHandle & operator=(const BasicAutoHandle &) = delete;
-
-    HANDLE get() const 
-        { return m_handle; }
-    HANDLE & out() 
-        { return m_handle; }
-    void reset() {
-        if (m_handle != InvalidValue) {
-            CloseHandle(m_handle);
-            m_handle = InvalidValue;
-        }
-    }
-    explicit operator bool() const 
-        { return m_handle != InvalidValue; }
-private:
-    HANDLE m_handle = InvalidValue;
-};
-
-using AutoHandle = BasicAutoHandle<nullptr>;
-using AutoFile = BasicAutoHandle<INVALID_HANDLE_VALUE>;
-
-struct LocalAllocDeleter {
-	void operator()(void * ptr) { LocalFree(ptr); }
-};
-
-template<class T>
-requires(
-	(!std::is_array_v<T> && std::is_trivially_destructible_v<T>) ||
-	(std::is_array_v<T> && std::is_trivially_destructible_v<std::remove_all_extents_t<T>>)
-)
-using unqiue_local_membuf = std::unique_ptr<T, LocalAllocDeleter>;
-
-static std::wstring makePipeName(DWORD procId) {
-    return std::format(L"\\\\.\\pipe\\{}-{}", g_myGuid, procId);
-}
-
 
 class WaitTracker {
 public:
@@ -263,17 +277,17 @@ static void runDirect(std::optional<ULONGLONG> duration) {
             PIPE_UNLIMITED_INSTANCES, 4096, 0, 
             NMPWAIT_USE_DEFAULT_WAIT, nullptr);
         if (!hPipe) {
-            fputws(std::format(L"child process: error creating pipe: {}", widen(std::error_code(int(GetLastError()), std::system_category()).message())).c_str(), stderr);
+            fputws(std::format(L"child process: error creating pipe: {}", win32ErrorMessage(GetLastError())).c_str(), stderr);
         }
 
         AutoHandle hEvent = CreateEvent(nullptr, true, true, nullptr);
         if (!hEvent)
-            throw std::system_error(std::error_code(int(GetLastError()), std::system_category()));
+            throwLastError("CreateEvent");
 
         
         auto oldState = SetThreadExecutionState(ES_CONTINUOUS | ES_SYSTEM_REQUIRED);
         if (oldState == 0)
-            throw std::system_error(std::error_code(int(GetLastError()), std::system_category()));
+            throwLastError("SetThreadExecutionState");
 
         fputws((duration ? 
                 std::format(L"preventing sleep for {0} or untill process {1} is stopped\n", formatDuration(*duration), GetCurrentProcessId()) : 
@@ -335,7 +349,7 @@ static void runDirect(std::optional<ULONGLONG> duration) {
 
 static void runChild() {
     if (!SetEnvironmentVariable(g_myGuid, L"ON"))
-        throw std::system_error(std::error_code(int(GetLastError()), std::system_category()));
+        throwLastError("SetEnvironmentVariable");
 
     std::wstring exe = myname();
     
@@ -346,19 +360,19 @@ static void runChild() {
 
     AutoFile hRead, hWrite;
     if (!CreatePipe(&hRead.out(), &hWrite.out(), &pipeAttr, 0))
-        throw std::system_error(std::error_code(int(GetLastError()), std::system_category()));
+        throwLastError("CreatePipe");
     if (!SetHandleInformation(hRead.get(), HANDLE_FLAG_INHERIT, 0))
-        throw std::system_error(std::error_code(int(GetLastError()), std::system_category()));
+        throwLastError("SetHandleInformation(read pipe)");
     AutoFile hErrWrite;
     if (!DuplicateHandle(GetCurrentProcess(), hWrite.get(), GetCurrentProcess(), &hErrWrite.out(), 0, true, DUPLICATE_SAME_ACCESS))
-        throw std::system_error(std::error_code(int(GetLastError()), std::system_category()));
+        throwLastError("DuplicateHandle(write pipe)");
 
     for(DWORD id: {STD_INPUT_HANDLE, STD_OUTPUT_HANDLE, STD_ERROR_HANDLE}) {
         auto h = GetStdHandle(id);
         if (h == nullptr || h == INVALID_HANDLE_VALUE)
             continue;
         if (!SetHandleInformation(h, HANDLE_FLAG_INHERIT, 0))
-            throw std::system_error(std::error_code(int(GetLastError()), std::system_category()));
+            throwLastError("SetHandleInformation(std handle)");
     }
     
 
@@ -372,7 +386,7 @@ static void runChild() {
     PROCESS_INFORMATION pi;
 
     if (!CreateProcess(exe.data(), GetCommandLine(), nullptr, nullptr, true, CREATE_DEFAULT_ERROR_MODE | CREATE_NO_WINDOW | DETACHED_PROCESS, nullptr, nullptr, &si, &pi))
-        throw std::system_error(std::error_code(int(GetLastError()), std::system_category()));
+        throwLastError("CreateProcess");
     CloseHandle(pi.hProcess);
     CloseHandle(pi.hThread);
 
@@ -457,7 +471,7 @@ static void listProcesses() {
     WTS_PROCESS_INFO * pi;
     DWORD count;
     if (!WTSEnumerateProcesses(WTS_CURRENT_SERVER_HANDLE, 0, 1, &pi, &count))
-        throw std::system_error(std::error_code(int(GetLastError()), std::system_category()));
+        throwLastError("WTSEnumerateProcesses");
 
     size_t widths[4] = {9, 16, 7, 10};
     enum Align {
@@ -537,6 +551,7 @@ LR"_(Usage:
     {0} list
     {0} stop pid [pid ...]
     {0} --help
+    {0} --version
 )_", progname);
 }
 
@@ -552,6 +567,7 @@ positional arguments:
 
 options:
   --help, -h  show this help message and exit
+  --version   report app version and exit
 )_";
     return ret;
 }
@@ -575,7 +591,6 @@ int wmain(int argc, wchar_t * argv[]) {
     try {
         parser.add(
             WOption(L"--help", L"-h"). 
-            help(L"show this help message and exit"). 
             handler([&]() {  
 
                 fputws(help(progname).c_str(), stdout);
@@ -583,7 +598,6 @@ int wmain(int argc, wchar_t * argv[]) {
         }));
         parser.add(
             WOption(L"--version"). 
-            help(L"report app version and exit"). 
             handler([&]() {  
 
                 fputs(KEEP_AWAKE_VERSION, stdout);
