@@ -4,7 +4,7 @@ set_property(GLOBAL PROPERTY USE_FOLDERS ON)
 set(CMAKE_CONFIGURATION_TYPES "Debug;RelWithDebInfo" CACHE STRING "" FORCE)
 
 #Set sane base flags to avoid reliance on whatever defaults are set from outside
-set(CMAKE_C_FLAGS "/Zi /MP /DWIN32 /D_WINDOWS")
+set(CMAKE_C_FLAGS "/Zi /DWIN32 /D_WINDOWS")
 set(CMAKE_C_FLAGS_DEBUG "")
 set(CMAKE_C_FLAGS_RELWITHDEBINFO "")
 set(CMAKE_CXX_FLAGS "${CMAKE_C_FLAGS}")
@@ -20,7 +20,7 @@ set(CMAKE_SHARED_LINKER_FLAGS_RELWITHDEBINFO "")
 set(CMAKE_C_STANDARD_LIBRARIES "")
 set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:DEBUG>:Debug>")
 
-set(CMAKE_CXX_STANDARD 20)
+set(CMAKE_CXX_STANDARD 23)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 set(CMAKE_C_STANDARD 11)
@@ -36,7 +36,7 @@ add_compile_options(
     /EHsc
     /bigobj
     "$<$<CONFIG:DEBUG>:/Od;/Ob0>"
-    "$<$<CONFIG:RELWITHDEBINFO>:/O2;/Ob2;/Oi;/Ot;/GT;/Gy;/Qpar>" #;/GL>"
+    "$<$<CONFIG:RELWITHDEBINFO>:/O2;/Ob3;/Oi;/Os;/GT;/Gy;/Qpar>" #;/GL>"
 )
 
 add_compile_definitions(
@@ -63,6 +63,15 @@ FetchContent_Declare(argum
 )
 list(APPEND DECLARED_DEPENDENCIES argum)
 
+FetchContent_Declare(ctre
+    GIT_REPOSITORY  https://github.com/hanickadot/compile-time-regular-expressions.git
+    GIT_TAG         v3.10.0
+    GIT_SHALLOW     TRUE
+    GIT_PROGRESS    TRUE
+    SOURCE_SUBDIR   single-header
+)
+list(APPEND DECLARED_DEPENDENCIES ctre)
+
 FetchContent_MakeAvailable(${DECLARED_DEPENDENCIES})
 
 get_directory_property(KNOWN_SUBDIRECTORIES SUBDIRECTORIES)
@@ -87,10 +96,20 @@ string(JSON BUILD_PATCH_VERSION GET ${VERSION_JSON} "BUILD_PATCH_VERSION")
 
 
 add_executable(keep-awake)
-set_target_properties(keep-awake PROPERTIES WIN32_EXECUTABLE TRUE)
 
 target_link_libraries(keep-awake PRIVATE
     argum
+    Wtsapi32.lib
+)
+
+target_include_directories(keep-awake PRIVATE
+    ${ctre_SOURCE_DIR}/single-header
+)
+
+target_compile_options(keep-awake PRIVATE
+    /W4;/WX
+    $<$<CXX_COMPILER_ID:MSVC>:/Zc:preprocessor;/MP>
+    /utf-8
 )
 
 target_compile_definitions(keep-awake PRIVATE
@@ -98,6 +117,7 @@ target_compile_definitions(keep-awake PRIVATE
     UNICODE
     _UNICODE
     NOMINMAX
+    KEEP_AWAKE_VERSION=\"${BUILD_MAJOR_VERSION}.${BUILD_MINOR_VERSION}.${BUILD_PATCH_VERSION}\"
 )
 
 target_sources(keep-awake PRIVATE

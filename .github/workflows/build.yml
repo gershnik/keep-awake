@@ -16,6 +16,10 @@ on:
 jobs:
   main:
     runs-on: windows-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        platform: [x64, arm64]
 
     steps:
     - name: Checkout
@@ -24,7 +28,7 @@ jobs:
     - name: Build
       run: |
           cmake -E make_directory out
-          cmake -S . -B out -DCMAKE_BUILD_TYPE=RelWithDebInfo -DFETCHCONTENT_QUIET=OFF
+          cmake -S . -B out -DCMAKE_GENERATOR_PLATFORM=${{ matrix.platform }} -DCMAKE_BUILD_TYPE=RelWithDebInfo
           cmake --build out --target keep-awake --config RelWithDebInfo
 
     

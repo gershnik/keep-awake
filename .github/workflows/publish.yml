@@ -1,15 +1,8 @@
 name: Release
 on:
-  workflow_dispatch:
-    inputs:
-      release_type:
-        type: choice
-        options:
-          - patch
-          - minor
-          - major
-        description: 'Release type'
-        required: true
+  push:
+    tags:
+      - 'v*'
 
 jobs:
   release:
@@ -19,58 +12,33 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
         
-      - name: Git configuration
-        run: |
-          git config --global user.email "<>"
-          git config --global user.name "GitHub Actions"
-
-      - name: Set release version
-        shell: bash
-        run: |
-          echo "NEW_VERSION=$(python3 .github/update-version.py ${{ github.event.inputs.release_type }})" >> $GITHUB_ENV
-
-      - name: Update changelog
-        uses: superfaceai/release-changelog-action@v2
+      - name: Get release Name
+        uses: actions/github-script@v7
         with:
-          path-to-changelog: CHANGELOG.md
-          version: ${{ env.NEW_VERSION }}
-          operation: release
+          script: |
+            const tagName = context.ref.substring(context.ref.lastIndexOf('/') + 2)
+            core.exportVariable('RELEASE_NAME', tagName)
 
-      - name: Commit CHANGELOG.md and version.json changes and create tag
-        run: |
-          git add "version.json"
-          git add "CHANGELOG.md"
-          git commit -m "chore: release ${{ env.NEW_VERSION }}"
-          git tag v${{ env.NEW_VERSION }}
-          
       - name: Build
         run: |
           cmake -E make_directory out
-          cmake -S . -B out -DCMAKE_BUILD_TYPE=RelWithDebInfo -DFETCHCONTENT_QUIET=OFF
-          cmake --build out --target keep-awake --config RelWithDebInfo
-          powershell Compress-Archive out/RelWithDebInfo/keep-awake.exe out/RelWithDebInfo/keep-awake.zip
 
-      - name: Push changes to repository
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          git push origin && git push --tags
+          cmake -S . -B out/x64 -DCMAKE_GENERATOR_PLATFORM=x64 -DCMAKE_BUILD_TYPE=RelWithDebInfo 
+          cmake --build out/x64 --target keep-awake --config RelWithDebInfo
+          powershell Compress-Archive out/x64/RelWithDebInfo/keep-awake.exe out/keep-awake-${{ env.RELEASE_NAME }}-x64.zip
 
-      - id: get-changelog
-        name: Get version changelog
-        uses: superfaceai/release-changelog-action@v2
-        with:
-          path-to-changelog: CHANGELOG.md
-          version: ${{ env.NEW_VERSION }}
-          operation: read
+          cmake -S . -B out/arm64 -DCMAKE_GENERATOR_PLATFORM=x64 -DCMAKE_BUILD_TYPE=RelWithDebInfo 
+          cmake --build out/arm64 --target keep-awake --config RelWithDebInfo
+          powershell Compress-Archive out/arm64/RelWithDebInfo/keep-awake.exe out/keep-awake-${{ env.RELEASE_NAME }}-arm64.zip
 
       - name: Update GitHub release documentation
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: v${{ env.NEW_VERSION }}
-          body: ${{ steps.get-changelog.outputs.changelog }}
+          tag_name: v${{ env.RELEASE_NAME }}
+          body: ...edit me...
           files: |
-            out/RelWithDebInfo/keep-awake.zip
+            out/keep-awake-${{ env.RELEASE_NAME }}-x64.zip
+            out/keep-awake-${{ env.RELEASE_NAME }}-arm64.zip
           draft: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
