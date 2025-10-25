@@ -25,15 +25,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Building the code now requires a recent version of Visual Studio 2022 with C++23 support.
 - Error messages are no longer reported via Event Log
 
-## 1.0.2 - 2025-04-24
+## [1.0.2] - 2025-04-24
 ### Changed
 - Updated external dependencies
 - Build workarounds for recent MSVC bugs
 
-## 1.0.1 - 2023-04-27
+## [1.0.1] - 2023-04-27
 ### Changed
 - Removed dependency on CRT DLLs
 
-## 1.0.0 - 2023-04-27
+## [1.0.0] - 2023-04-27
 ### Added
 - Initial version
+
+[1.0.0]: https://github.com/gershnik/keep-awake/releases/v1.0.0
+[1.0.1]: https://github.com/gershnik/keep-awake/releases/v1.0.1
+[1.0.2]: https://github.com/gershnik/keep-awake/releases/v1.0.2
