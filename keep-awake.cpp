@@ -98,7 +98,7 @@ static std::wstring myname() {
             break;
         }
         auto err = GetLastError();
-        if (err == NO_ERROR)
+        if (err == ERROR_SUCCESS)
             break;
         if (err == ERROR_INSUFFICIENT_BUFFER) {
             if (err < std::numeric_limits<DWORD>::max() / 2)
@@ -385,7 +385,10 @@ static void runChild() {
     }
 }
 
-static bool execOnPipe(DWORD procId, std::string_view cmd, std::invocable<HANDLE> auto && proc) {
+static DWORD execOnPipe(DWORD procId, std::string_view cmd, std::invocable<HANDLE> auto && proc) 
+    requires(std::is_same_v<decltype(std::forward<decltype(proc)>(proc)(HANDLE{})), DWORD> ||
+             std::is_same_v<decltype(std::forward<decltype(proc)>(proc)(HANDLE{})), void>)
+{
     std::wstring pipeName = makePipeName(procId);
     while(true) {
         AutoFile hPipe = CreateFile(pipeName.c_str(), GENERIC_READ | GENERIC_WRITE, 0, nullptr, OPEN_EXISTING, 0, nullptr);
@@ -393,38 +396,41 @@ static bool execOnPipe(DWORD procId, std::string_view cmd, std::invocable<HANDLE
             DWORD err = GetLastError();
             if (err == ERROR_PIPE_BUSY) {
                 if (!WaitNamedPipe(pipeName.c_str(), NMPWAIT_WAIT_FOREVER))
-                    return false;
+                    return err;
                 continue;
             }
+            return err;
         }
         DWORD written;
         if (!WriteFile(hPipe.get(), cmd.data(), DWORD(cmd.size()), &written, nullptr) || written != cmd.size())
-            return false;
-        if constexpr (std::is_convertible_v<decltype(std::forward<decltype(proc)>(proc)(hPipe.get())), bool>)
+            return GetLastError();
+        if constexpr (std::is_same_v<decltype(std::forward<decltype(proc)>(proc)(hPipe.get())), DWORD>)
             return std::forward<decltype(proc)>(proc)(hPipe.get());
         else {
             std::forward<decltype(proc)>(proc)(hPipe.get());
-            return true;
+            return ERROR_SUCCESS;
         }
     }
 }
 
 static std::optional<std::wstring> getInfo(DWORD procId) {
     std::string buf(256, '\0');
-    if (!execOnPipe(procId, "info", [&buf](HANDLE hPipe) {
-            DWORD read;
-            if (!ReadFile(hPipe, buf.data(), DWORD(buf.size()), &read, nullptr))
-                return false;
-            buf.resize(read);
-            return true;
-        }))
-        return {};
-
-    return widen(buf);
+    auto err = execOnPipe(procId, "info", [&buf](HANDLE hPipe) -> DWORD {
+        DWORD read;
+        if (!ReadFile(hPipe, buf.data(), DWORD(buf.size()), &read, nullptr))
+            return GetLastError();
+        buf.resize(read);
+        return ERROR_SUCCESS;
+    }); 
+    if (err == ERROR_SUCCESS)
+        return widen(buf);
+    if (err == ERROR_ACCESS_DENIED)
+        return L"<inaccessible>";
+    return {};
 }
 
 static bool kill(DWORD procId) {
-    return execOnPipe(procId, "stop", [] (HANDLE) {});
+    return execOnPipe(procId, "stop", [] (HANDLE) {}) == ERROR_SUCCESS;
 }
 
 static std::wstring sidToUsername(PSID psid) {
@@ -474,8 +480,11 @@ static void listProcesses() {
     
 
     addRow({L"PID", L"USER", L"SESSION", L"REMAINING"});
+    auto mypid = GetCurrentProcessId();
     for(DWORD i = 0; i < count; ++i) {
         auto & info = pi[i];
+        if (pi[i].ProcessId == mypid)
+            continue;
         if (info.pProcessName == L"keep-awake.exe"sv) {
             if (auto remaining = getInfo(pi[i].ProcessId)) {
                 addRow({std::to_wstring(pi[i].ProcessId), sidToUsername(pi[i].pUserSid), std::to_wstring(pi[i].SessionId), *remaining});
