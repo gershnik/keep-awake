@@ -2,13 +2,15 @@ import argparse
 import json
 import sys
 import re
+import subprocess
 from pathlib import Path
+from datetime import date
 
 parser = argparse.ArgumentParser()
 parser.add_argument('type', choices=['minor', 'major', 'patch'])
 args = parser.parse_args()
 
-mydir = Path(__file__).parent
+ROOT = Path(__file__).parent.parent
 
 def nextVersion(major, minor, patch):
     if args.type == 'patch':
@@ -23,7 +25,7 @@ def nextVersion(major, minor, patch):
     return (major, minor, patch)
 
 
-with open('version.json', 'r') as verfile:
+with open(ROOT / 'version.json', 'r') as verfile:
     current = json.load(verfile)
 
 
