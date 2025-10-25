@@ -267,83 +267,69 @@ static void writeInfo(HANDLE hPipe, const WaitTracker & tracker) {
 
 static void runDirect(std::optional<ULONGLONG> duration) {
 
-    //Sleep(15000);
-    
-    try {
-
-        AutoFile hPipe =  CreateNamedPipeW(makePipeName(GetCurrentProcessId()).c_str(),
-            PIPE_ACCESS_DUPLEX | FILE_FLAG_FIRST_PIPE_INSTANCE | FILE_FLAG_OVERLAPPED, 
-            PIPE_TYPE_BYTE | PIPE_READMODE_BYTE | PIPE_WAIT | PIPE_REJECT_REMOTE_CLIENTS,
-            PIPE_UNLIMITED_INSTANCES, 4096, 0, 
-            NMPWAIT_USE_DEFAULT_WAIT, nullptr);
-        if (!hPipe) {
-            fputws(std::format(L"child process: error creating pipe: {}", win32ErrorMessage(GetLastError())).c_str(), stderr);
-        }
-
-        AutoHandle hEvent = CreateEvent(nullptr, true, true, nullptr);
-        if (!hEvent)
-            throwLastError("CreateEvent");
-
-        
-        auto oldState = SetThreadExecutionState(ES_CONTINUOUS | ES_SYSTEM_REQUIRED);
-        if (oldState == 0)
-            throwLastError("SetThreadExecutionState");
-
-        fputws((duration ? 
-                std::format(L"preventing sleep for {0} or untill process {1} is stopped\n", formatDuration(*duration), GetCurrentProcessId()) : 
-                std::format(L"preventing sleep indefinitely or untill process {0} is stopped\n", GetCurrentProcessId())).c_str(),
-               stdout);
-
-        (void)freopen("NUL:", "w", stdout);
-        (void)freopen("NUL:", "w", stderr);
-        
-        WaitTracker tracker(duration);
-        
-        while(!tracker.isDone()) {
-
-            OVERLAPPED ovl{};
-            ovl.hEvent = hEvent.get();
-
-            SetLastError(ERROR_IO_PENDING);
-            if (!hPipe || !ConnectNamedPipe(hPipe.get(), &ovl)) {
-                DWORD err = GetLastError();
-                if (err == ERROR_IO_PENDING) {
-                    if (!tracker.waitNext(hEvent.get()))
-                        break;
-                    DWORD dummy;
-                    GetOverlappedResult(hPipe.get(), &ovl, &dummy, false);
-                } else if (err != ERROR_PIPE_CONNECTED) {
-                    DisconnectNamedPipe(hPipe.get());
-                    continue;
-                }
-            }
-            assert(hPipe);
-                
-            std::string command(4, '\0');
-            DWORD read;
-            if (ReadFile(hPipe.get(), command.data(), DWORD(command.size()), &read, nullptr) && read == 4) {
-                if (command == "info") {
-                    writeInfo(hPipe.get(), tracker);
-                } else if (command == "stop") {
-                    break;
-                }
-            }
-            DisconnectNamedPipe(hPipe.get());
-        }
-        
-
-        SetThreadExecutionState(ES_CONTINUOUS);
-        
-
-    } catch(WParsingException & ex) {
-        std::wstring message = L"child process error: ";
-        message += ex.message();
-        fputws(message.c_str(), stderr);
-    } catch (std::exception & ex) {
-        std::wstring message = L"child process error: ";
-        message += widen(ex.what());
-        fputws(message.c_str(), stderr);
+    AutoFile hPipe =  CreateNamedPipeW(makePipeName(GetCurrentProcessId()).c_str(),
+                                       PIPE_ACCESS_DUPLEX | FILE_FLAG_FIRST_PIPE_INSTANCE | FILE_FLAG_OVERLAPPED, 
+                                       PIPE_TYPE_BYTE | PIPE_READMODE_BYTE | PIPE_WAIT | PIPE_REJECT_REMOTE_CLIENTS,
+                                       PIPE_UNLIMITED_INSTANCES, 4096, 0, 
+                                       NMPWAIT_USE_DEFAULT_WAIT, nullptr);
+    if (!hPipe) {
+        fputws(std::format(L"child process: error creating pipe: {}", win32ErrorMessage(GetLastError())).c_str(), stderr);
     }
+
+    AutoHandle hEvent = CreateEvent(nullptr, true, true, nullptr);
+    if (!hEvent)
+        throwLastError("CreateEvent");
+
+        
+    auto oldState = SetThreadExecutionState(ES_CONTINUOUS | ES_SYSTEM_REQUIRED);
+    if (oldState == 0)
+        throwLastError("SetThreadExecutionState");
+
+    fputws((duration ? 
+            std::format(L"preventing sleep for {0} or untill process {1} is stopped\n", formatDuration(*duration), GetCurrentProcessId()) : 
+            std::format(L"preventing sleep indefinitely or untill process {0} is stopped\n", GetCurrentProcessId())).c_str(),
+            stdout);
+
+    //Disconnect from parent, exceptions will not be reported from this point on
+    (void)freopen("NUL:", "w", stdout);
+    (void)freopen("NUL:", "w", stderr);
+        
+    WaitTracker tracker(duration);
+        
+    while(!tracker.isDone()) {
+
+        OVERLAPPED ovl{};
+        ovl.hEvent = hEvent.get();
+
+        SetLastError(ERROR_IO_PENDING);
+        if (!hPipe || !ConnectNamedPipe(hPipe.get(), &ovl)) {
+            DWORD err = GetLastError();
+            if (err == ERROR_IO_PENDING) {
+                if (!tracker.waitNext(hEvent.get()))
+                    break;
+                DWORD dummy;
+                GetOverlappedResult(hPipe.get(), &ovl, &dummy, false);
+            } else if (err != ERROR_PIPE_CONNECTED) {
+                DisconnectNamedPipe(hPipe.get());
+                continue;
+            }
+        }
+        assert(hPipe);
+                
+        std::string command(4, '\0');
+        DWORD read;
+        if (ReadFile(hPipe.get(), command.data(), DWORD(command.size()), &read, nullptr) && read == 4) {
+            if (command == "info") {
+                writeInfo(hPipe.get(), tracker);
+            } else if (command == "stop") {
+                break;
+            }
+        }
+        DisconnectNamedPipe(hPipe.get());
+    }
+    
+    SetThreadExecutionState(ES_CONTINUOUS);
+        
 }
 
 
@@ -375,8 +361,6 @@ static void runChild() {
             throwLastError("SetHandleInformation(std handle)");
     }
     
-
-
     STARTUPINFOW si{};
     si.cb = sizeof(si);
     si.dwFlags = STARTF_USESTDHANDLES;
@@ -500,17 +484,19 @@ static void listProcesses() {
     }
 
     for (auto & row: table) {
+        std::wstring acc;
         for(size_t i = 0; i < row.size(); ++i) {
             std::wstring padding(widths[i] - row[i].size(), L' ');
             if (aligns[i] == left)
-                row[i] = row[i] + padding;
+                acc += row[i] + padding;
             else
-                row[i] = padding + row[i];
+                acc += padding + row[i];
+            acc += L' ';
         }
-    }
-
-    for (auto & row: table) {
-        fputws(std::format(L"{}  {}  {}  {}\n", row[0], row[1], row[2], row[3]).c_str(), stdout);
+        if (!acc.empty())
+            acc.resize(acc.size() - 1);
+        acc += L'\n';
+        fputws(acc.c_str(), stdout);
     }
 }
 
@@ -574,14 +560,11 @@ options:
 
 int wmain(int argc, wchar_t * argv[]) {
 
-
-    //Sleep(15000);
-
     normalizeStdIO();
 
-    auto myenv = _wgetenv(g_myGuid);
-    bool isChild = myenv && myenv == L"ON"sv;
-    auto progname = argc ? argv[0] : L"keep-awake";
+    const auto myenv = _wgetenv(g_myGuid);
+    const bool isChild = myenv && myenv == L"ON"sv;
+    const auto progname = argc ? argv[0] : L"keep-awake";
 
     std::optional<ULONGLONG> duration;
     std::optional<std::wstring> command;
@@ -589,24 +572,19 @@ int wmain(int argc, wchar_t * argv[]) {
 
     WParser parser;
     try {
-        parser.add(
-            WOption(L"--help", L"-h"). 
-            handler([&]() {  
-
+        parser.add(WOption(L"--help", L"-h").handler(
+            [&]() {
                 fputws(help(progname).c_str(), stdout);
                 std::exit(EXIT_SUCCESS);
         }));
-        parser.add(
-            WOption(L"--version"). 
-            handler([&]() {  
-
+        parser.add(WOption(L"--version").handler(
+            [&]() {
                 fputs(KEEP_AWAKE_VERSION, stdout);
                 std::exit(EXIT_SUCCESS);
         }));
-        parser.add(
-            WPositional(L"command").
-            occurs(neverOrOnce).
-            handler([&](const std::wstring_view & value) -> WExpected<void> {
+        parser.add(WPositional(L"command").occurs(neverOrOnce).handler(
+            [&](const std::wstring_view & value) -> WExpected<void> {
+
                 if (value == L"list" || value == L"stop") {
                     command = value;
                 } else if (auto maybeVal = parseDuration(value)) {
@@ -619,10 +597,8 @@ int wmain(int argc, wchar_t * argv[]) {
                 }
                 return {};
         }));
-        parser.add(
-            WPositional(L"args").
-            occurs(zeroOrMoreTimes).
-            handler([&](const std::wstring_view & value) -> WExpected<void> {
+        parser.add(WPositional(L"args").occurs(zeroOrMoreTimes).handler(
+            [&](const std::wstring_view & value) -> WExpected<void> {
 
                 if (command && *command == L"stop") {
                     pidsToKill.push_back(parseIntegral<DWORD>(value).value());
@@ -635,8 +611,7 @@ int wmain(int argc, wchar_t * argv[]) {
             return !command || *command != L"stop" || !pidsToKill.empty();
         }, L"stop command requires PID arguments");
         
-        auto result = parser.parse(argc, argv);
-        if (auto err = result.error()) {
+        if (auto err = parser.parse(argc, argv).error()) {
             std::wstring message;
             message += err->message();
             message += L"\n\n";
@@ -672,7 +647,10 @@ int wmain(int argc, wchar_t * argv[]) {
         return EXIT_SUCCESS;
 
     } catch (std::exception & ex) {
-        fputws(std::format(L"{}: {}", progname, widen(ex.what())).c_str(), stderr);
+        if (isChild)
+            fputws(std::format(L"{}: (child): {}", progname, widen(ex.what())).c_str(), stderr);
+        else
+            fputws(std::format(L"{}: {}", progname, widen(ex.what())).c_str(), stderr);
     }
     return EXIT_FAILURE;
 }
