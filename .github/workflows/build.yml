@@ -28,7 +28,7 @@ jobs:
     - name: Build
       run: |
           cmake -E make_directory out
-          cmake -S . -B out -DCMAKE_GENERATOR_PLATFORM=${{ matrix.platform }} -DCMAKE_BUILD_TYPE=RelWithDebInfo -DFETCHCONTENT_QUIET=OFF
+          cmake -S . -B out -DCMAKE_GENERATOR_PLATFORM=${{ matrix.platform }} -DCMAKE_BUILD_TYPE=RelWithDebInfo
           cmake --build out --target keep-awake --config RelWithDebInfo
 
     
