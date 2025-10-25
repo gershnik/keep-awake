@@ -4,6 +4,7 @@ using namespace std::literals;
 constexpr auto g_maxDuration = std::numeric_limits<ULONGLONG>::max() / 1000;
 constexpr auto g_myGuid = L"BAF0674F-E091-468A-AAA9-234909F4CFFB";
 
+#pragma region General Win32 Utilities
 
 static std::wstring widen(std::string_view str) {
     int size_needed = MultiByteToWideChar(CP_UTF8, 0, str.data(), int(str.size()), nullptr, 0);
@@ -72,9 +73,9 @@ requires(
 )
 using unqiue_local_membuf = std::unique_ptr<T, LocalAllocDeleter>;
 
-static std::wstring win32ErrorMessage(DWORD err) {
-    return widen(std::error_code(int(err), std::system_category()).message());
-}
+//static std::wstring win32ErrorMessage(DWORD err) {
+//    return widen(std::error_code(int(err), std::system_category()).message());
+//}
 
 [[noreturn]]
 static inline void throwWin32Error(DWORD err, const char * doingWhat) {
@@ -113,6 +114,25 @@ static std::wstring myname() {
     }
     return ret;
 }
+
+static void getTokenInfo(HANDLE token, TOKEN_INFORMATION_CLASS infoClass, std::vector<BYTE> & buf) {
+
+    while (true) {
+        DWORD size;
+        if (GetTokenInformation(token, infoClass, buf.data(), DWORD(buf.size()), &size)) {
+            buf.resize(size);
+            break;
+        }
+        auto err = GetLastError();
+        if (err != ERROR_INSUFFICIENT_BUFFER)
+            throwWin32Error(err, "GetTokenInformation");
+        buf.resize(size);
+    }
+}
+
+#pragma endregion
+
+#pragma region Helpers
 
 static std::wstring makePipeName(DWORD procId) {
     return std::format(L"\\\\.\\pipe\\{}-{}", g_myGuid, procId);
@@ -210,6 +230,9 @@ static std::optional<ULONGLONG> parseDuration(std::wstring_view str) {
     return acc;
 }
 
+#pragma endregion
+
+#pragma region Child Process Code
 
 class WaitTracker {
 public:
@@ -265,16 +288,51 @@ static void writeInfo(HANDLE hPipe, const WaitTracker & tracker) {
     FlushFileBuffers(hPipe);
 }
 
+// By default pipes get a security descriptor that grants read access to 
+// members of the Everyone group and the anonymous account. Ugh
+// Let's create one that doesn't
+static unqiue_local_membuf<SECURITY_DESCRIPTOR> createPipeSecurityDescriptor() {
+    HANDLE token = GetCurrentProcessToken();
+
+    std::vector<BYTE> buf;
+    getTokenInfo(token, TokenUser, buf);
+    auto pusr = (TOKEN_USER *)buf.data();
+    unqiue_local_membuf<wchar_t> stringUserSid;
+    if (!ConvertSidToStringSidW(pusr->User.Sid, std::out_ptr(stringUserSid)))
+        throwLastError("ConvertSidToStringSid");
+
+    getTokenInfo(token, TokenPrimaryGroup, buf);
+    auto * pgrp = (TOKEN_PRIMARY_GROUP *)buf.data();
+    unqiue_local_membuf<wchar_t> stringGroupSid;
+    if (!ConvertSidToStringSidW(pgrp->PrimaryGroup, std::out_ptr(stringGroupSid)))
+        throwLastError("ConvertSidToStringSid");
+
+    auto sddl = std::format(L"O:{0}G:{1}D:(A;;FA;;;SY)(A;;FA;;;BA)(A;;FA;;;{0})", stringUserSid.get(), stringGroupSid.get());
+
+    unqiue_local_membuf<SECURITY_DESCRIPTOR> desc;
+    ULONG descSize;
+    if (!ConvertStringSecurityDescriptorToSecurityDescriptor(sddl.c_str(), SDDL_REVISION_1, std::out_ptr(desc), &descSize))
+        throwLastError("ConvertStringSecurityDescriptorToSecurityDescriptor");
+
+    return desc;
+}
+
 static void runDirect(std::optional<ULONGLONG> duration) {
 
-    AutoFile hPipe =  CreateNamedPipeW(makePipeName(GetCurrentProcessId()).c_str(),
-                                       PIPE_ACCESS_DUPLEX | FILE_FLAG_FIRST_PIPE_INSTANCE | FILE_FLAG_OVERLAPPED, 
-                                       PIPE_TYPE_BYTE | PIPE_READMODE_BYTE | PIPE_WAIT | PIPE_REJECT_REMOTE_CLIENTS,
-                                       PIPE_UNLIMITED_INSTANCES, 4096, 0, 
-                                       NMPWAIT_USE_DEFAULT_WAIT, nullptr);
-    if (!hPipe) {
-        fputws(std::format(L"child process: error creating pipe: {}", win32ErrorMessage(GetLastError())).c_str(), stderr);
-    }
+    auto desc = createPipeSecurityDescriptor();
+
+    SECURITY_ATTRIBUTES sa;
+    sa.nLength = sizeof(sa);
+    sa.lpSecurityDescriptor = desc.get();
+    sa.bInheritHandle = false;
+
+    AutoFile hPipe =  CreateNamedPipe(makePipeName(GetCurrentProcessId()).c_str(),
+                                      PIPE_ACCESS_DUPLEX | FILE_FLAG_FIRST_PIPE_INSTANCE | FILE_FLAG_OVERLAPPED, 
+                                      PIPE_TYPE_BYTE | PIPE_READMODE_BYTE | PIPE_WAIT | PIPE_REJECT_REMOTE_CLIENTS,
+                                      1, 4096, 0, 
+                                      NMPWAIT_USE_DEFAULT_WAIT, &sa);
+    if (!hPipe)
+        throwLastError("CreateNamedPipe");
 
     AutoHandle hEvent = CreateEvent(nullptr, true, true, nullptr);
     if (!hEvent)
@@ -301,6 +359,10 @@ static void runDirect(std::optional<ULONGLONG> duration) {
         OVERLAPPED ovl{};
         ovl.hEvent = hEvent.get();
 
+        // The code below can work with or without pipe
+        // For now we fail above if the pipe cannot be created.
+        // However, it is possible to make that non-fatal and this
+        //code will work just fine.
         SetLastError(ERROR_IO_PENDING);
         if (!hPipe || !ConnectNamedPipe(hPipe.get(), &ovl)) {
             DWORD err = GetLastError();
@@ -332,6 +394,9 @@ static void runDirect(std::optional<ULONGLONG> duration) {
         
 }
 
+#pragma endregion
+
+#pragma region Main Code
 
 static void runChild() {
     if (!SetEnvironmentVariable(g_myGuid, L"ON"))
@@ -434,6 +499,10 @@ static bool kill(DWORD procId) {
 }
 
 static std::wstring sidToUsername(PSID psid) {
+
+    if (!psid)
+        return L"<unknown>";
+
     std::wstring name, domain;
 
     while (true) {
@@ -463,7 +532,7 @@ static void listProcesses() {
     if (!WTSEnumerateProcesses(WTS_CURRENT_SERVER_HANDLE, 0, 1, &pi, &count))
         throwLastError("WTSEnumerateProcesses");
 
-    size_t widths[4] = {9, 16, 7, 10};
+    size_t widths[4] = {9, 16, 4, 16};
     enum Align {
         left,
         right
@@ -479,7 +548,7 @@ static void listProcesses() {
     };
     
 
-    addRow({L"PID", L"USER", L"SESSION", L"REMAINING"});
+    addRow({L"PID", L"USER", L"SESS", L"REMAINING"});
     auto mypid = GetCurrentProcessId();
     for(DWORD i = 0; i < count; ++i) {
         auto & info = pi[i];
@@ -500,10 +569,10 @@ static void listProcesses() {
                 acc += row[i] + padding;
             else
                 acc += padding + row[i];
-            acc += L' ';
+            acc += L"  ";
         }
         if (!acc.empty())
-            acc.resize(acc.size() - 1);
+            acc.resize(acc.size() - 2);
         acc += L'\n';
         fputws(acc.c_str(), stdout);
     }
@@ -664,5 +733,4 @@ int wmain(int argc, wchar_t * argv[]) {
     return EXIT_FAILURE;
 }
 
-
-
+#pragma endregion
