@@ -31,7 +31,7 @@ keep-awake
 
 ### Keep machine awake for a specified period of time:
 
-You can pass an optional timeout argument to `keep-awake` (see [below](#timeout_syntax) for syntax). 
+You can pass an optional timeout argument to `keep-awake` (see [below](#timeout-syntax) for syntax). 
 
 If **not** running over SSH:
 
@@ -79,7 +79,7 @@ keep-awake list
 You can stop running instances of `keep-awake` via:
 
 ```
-keep-awake list pid [pid ...]
+keep-awake stop pid [pid ...]
 ```
 
 where pid is a process ID of a running instance. The process IDs are reported when you launch `keep-awake`
