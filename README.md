@@ -21,7 +21,7 @@ You can see the available command line options by running `keep-awake --help`
 
 ### Keep machine awake until the process is terminated
 
-This mode is usefull when connecting over SSH. Windows SSH server kills all the child processes created within SSH session 
+This mode is useful when connecting over SSH. Windows SSH server kills all the child processes created within SSH session 
 when the session ends. Thus, effectively, this mode keeps the computer alive while the session is active.
 
 ```bat
@@ -54,7 +54,7 @@ Invoke-WmiMethod -Path 'Win32_Process' -Name Create -ArgumentList 'path\to\keep-
 
 #### Timeout syntax
 
-The syntax for `<timeout>` can be a single number - this is intepreted as seconds. 
+The syntax for `<timeout>` can be a single number - this is interpreted as seconds. 
 Or, you can use a full format:
 ```
 "<num>d <num>h <num>m <num>[s]"
@@ -74,7 +74,7 @@ to run.
 keep-awake list
 ```
 
-### Stopping an intance
+### Stopping an instance
 
 You can stop running instances of `keep-awake` via:
 
