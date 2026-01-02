@@ -3,7 +3,7 @@
 This is a small tool that allows you to prevent a Windows machine from sleeping/hibernating. 
 This is useful, for example, when connecting over SSH to a Windows machine that is configured to sleep when not used. 
 
-Unlike other solutions to this task `keep-awake` **doesn't change global computer settings** and so doesn't leave
+Unlike other solutions to this task, `keep-awake` **doesn't change global computer settings** and so doesn't leave
 them 'orphaned' if it is abnormally terminated.
 
 ## Installation
