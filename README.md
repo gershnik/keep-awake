@@ -87,6 +87,12 @@ or by `list` command.
 
 Alternatively, you can always terminate an instance using Task Manager or a similar tool.
 
+### Color output
+
+Since version 2.1.0 `keep-awake` supports colored output if the output is printed on a terminal that supports
+colors. You can override this behavior using environment variables [NO_COLOR](https://no-color.org) and 
+[FORCE_COLOR](https://force-color.org). If both are set `NO_COLOR` takes precedence.
+
 ## Building
 
 Clone this repository and open its folder in Visual Studio 2022 or later as a CMake project.
