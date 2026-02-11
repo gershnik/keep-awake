@@ -6,6 +6,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
+## [2.1.0] - 2026-02-11
+
 ### Added
 - All output is now colored (because it is 2026) if the output destination
   supports colors.
@@ -50,3 +52,4 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 [1.0.1]: https://github.com/gershnik/keep-awake/releases/v1.0.1
 [1.0.2]: https://github.com/gershnik/keep-awake/releases/v1.0.2
 [2.0.0]: https://github.com/gershnik/keep-awake/releases/v2.0.0
+[2.1.0]: https://github.com/gershnik/keep-awake/releases/v2.1.0
