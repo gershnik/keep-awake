@@ -36,7 +36,7 @@ add_compile_options(
     /EHsc
     /bigobj
     "$<$<CONFIG:DEBUG>:/Od;/Ob0>"
-    "$<$<CONFIG:RELWITHDEBINFO>:/O2;/Ob3;/Oi;/Os;/GT;/Gy;/Qpar>" #;/GL>"
+    "$<$<CONFIG:RELWITHDEBINFO>:/O2;/Ob3;/Oi;/Os;/Gy>" #;/GL>"
 )
 
 add_compile_definitions(
@@ -109,6 +109,7 @@ target_include_directories(keep-awake PRIVATE
 target_compile_options(keep-awake PRIVATE
     /W4;/WX
     $<$<CXX_COMPILER_ID:MSVC>:/Zc:preprocessor;/MP>
+    $<$<AND:$<CXX_COMPILER_ID:MSVC>,$<CONFIG:RELWITHDEBINFO>>:/GT;/Qpar>
     /utf-8
 )
 

@@ -39,7 +39,7 @@ static std::string narrow(std::wstring_view str) {
     return ret;
 }
 
-template<HANDLE InvalidValue>
+template<uintptr_t InvalidValue>
 class BasicAutoHandle {
 public:
     BasicAutoHandle() noexcept = default;
@@ -47,16 +47,16 @@ public:
         m_handle(h)
     {}
     ~BasicAutoHandle() noexcept {
-        if (m_handle != InvalidValue)
+        if (m_handle != HANDLE(InvalidValue))
             CloseHandle(m_handle);
     }
     BasicAutoHandle(BasicAutoHandle && src) noexcept : 
-        m_handle(std::exchange(src.m_handle, InvalidValue))
+        m_handle(std::exchange(src.m_handle, HANDLE(InvalidValue)))
     {}
     BasicAutoHandle & operator=(BasicAutoHandle && src) noexcept {
-        if (m_handle != InvalidValue)
+        if (m_handle != HANDLE(InvalidValue))
             CloseHandle(m_handle);
-        m_handle = std::exchange(src.m_handle, InvalidValue);
+        m_handle = std::exchange(src.m_handle, HANDLE(InvalidValue));
         return *this;
     }
     BasicAutoHandle(const BasicAutoHandle &) = delete;
@@ -67,19 +67,19 @@ public:
     HANDLE & out() 
         { return m_handle; }
     void reset() {
-        if (m_handle != InvalidValue) {
+        if (m_handle != HANDLE(InvalidValue)) {
             CloseHandle(m_handle);
-            m_handle = InvalidValue;
+            m_handle = HANDLE(InvalidValue);
         }
     }
     explicit operator bool() const 
-        { return m_handle != InvalidValue; }
+        { return m_handle != HANDLE(InvalidValue); }
 private:
-    HANDLE m_handle = InvalidValue;
+    HANDLE m_handle = HANDLE(InvalidValue);
 };
 
-using AutoHandle = BasicAutoHandle<nullptr>;
-using AutoFile = BasicAutoHandle<INVALID_HANDLE_VALUE>;
+using AutoHandle = BasicAutoHandle<0>;
+using AutoFile = BasicAutoHandle<uintptr_t(-1)>;
 
 struct LocalAllocDeleter {
 	void operator()(void * ptr) { LocalFree(ptr); }

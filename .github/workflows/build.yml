@@ -20,15 +20,24 @@ jobs:
       fail-fast: false
       matrix:
         platform: [x64, arm64]
+        compiler: [msvc, clang]
 
     steps:
     - name: Checkout
       uses: actions/checkout@v4
     
     - name: Build
+      shell: bash
       run: |
           cmake -E make_directory out
-          cmake -S . -B out -DCMAKE_GENERATOR_PLATFORM=${{ matrix.platform }} -DCMAKE_BUILD_TYPE=RelWithDebInfo
+          if [[ '${{ matrix.compiler }}' == 'clang' ]]; then
+              VCPREFIX="C:\\Program Files\\Microsoft Visual Studio\\2022\\Enterprise\\VC\\Tools\\Llvm\\${{ matrix.arch }}\\bin"
+              export "CC=$VCPREFIX\\${{ matrix.compiler }}"
+              export "CXX=$VCPREFIX\\${{ matrix.compiler }}"
+          else
+              EXTRA_ARGS=-DCMAKE_GENERATOR_PLATFORM=${{ matrix.platform }}
+          fi
+          cmake -GNinja -S . -B out $EXTRA_ARGS -DCMAKE_BUILD_TYPE=RelWithDebInfo
           cmake --build out --target keep-awake --config RelWithDebInfo
 
     
