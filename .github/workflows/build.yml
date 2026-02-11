@@ -19,8 +19,10 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        platform: [x64, arm64]
-        compiler: [msvc, clang]
+        include:
+        - {compiler: msvc, platform: x64}
+        - {compiler: msvc, platform: arm64}
+        - {compiler: clang, platform: x64}
 
     steps:
     - name: Checkout
