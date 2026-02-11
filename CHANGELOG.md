@@ -6,6 +6,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
+### Added
+- All output is now colored (because it is 2026) if the output destination
+  supports colors.
+- Command line help is expanded and better formatted
+- It is now possible to build the app using `clang-cl`
+
 ## [2.0.0] - 2025-10-25
 ### Added
 - A major release with many new features

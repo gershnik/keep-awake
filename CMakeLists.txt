@@ -60,6 +60,7 @@ FetchContent_Declare(argum
     GIT_TAG         ead2b6d45c7059e640dfeb90397896bdf53e5c34
     GIT_SHALLOW     TRUE
     GIT_PROGRESS    TRUE
+    SOURCE_SUBDIR   single-file
 )
 list(APPEND DECLARED_DEPENDENCIES argum)
 
@@ -98,12 +99,12 @@ string(JSON BUILD_PATCH_VERSION GET ${VERSION_JSON} "BUILD_PATCH_VERSION")
 add_executable(keep-awake)
 
 target_link_libraries(keep-awake PRIVATE
-    argum
     Wtsapi32.lib
 )
 
 target_include_directories(keep-awake PRIVATE
     ${ctre_SOURCE_DIR}/single-header
+    ${argum_SOURCE_DIR}/single-file
 )
 
 target_compile_options(keep-awake PRIVATE
@@ -118,6 +119,7 @@ target_compile_definitions(keep-awake PRIVATE
     UNICODE
     _UNICODE
     NOMINMAX
+    _CRT_SECURE_NO_WARNINGS
     KEEP_AWAKE_VERSION=\"${BUILD_MAJOR_VERSION}.${BUILD_MINOR_VERSION}.${BUILD_PATCH_VERSION}\"
 )
 

@@ -14,7 +14,7 @@
 #include <sddl.h>
 
 #define ARGUM_USE_EXPECTED
-#include <argum/argum.h>
+#include <argum.h>
 
 #include <ctre.hpp>
 

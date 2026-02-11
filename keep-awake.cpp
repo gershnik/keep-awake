@@ -771,8 +771,16 @@ static std::wstring help(const wchar_t * argv0, const Layout & layout, bool useC
     ret += L"\n";
     
     ret += formatLine(colorize<KA_COLOR_HELP_HEADING>(useColor, L"arguments:"), layout);
-    ret += formatItemHelp(colorize<KA_COLOR_HELP_ARG>(useColor, L"duration"), 
-                          L"how long to keep computer awake in milliseconds. If omitted, keep it awake indefinitely.", 
+    ret += formatItemHelp(colorize<KA_COLOR_HELP_ARG>(useColor, L"duration"),
+                          std::format(
+                          L"how long to keep computer awake in milliseconds. If omitted, keep it awake indefinitely. "
+                          L"The duration can be a simple number - this is interpreted as seconds. "
+                          L"Or, you can use a full format:\n{0}<num>d <num>h <num>m <num>[s]{1} "
+                          L"for days, hours, minutes and seconds. Every part is optional, but at least one must be present. "
+                          L"You can use any number of spaces (including none) anywhere in the string but, if you do, you "
+                          L"will need to wrap the string in \" to make it one command line argument.",
+                              makeWColor<Color::bold>(useColor),
+                              makeWColor<Color::normal>(useColor)), 
                           maxNameLength, layout);
     ret += L"\n";
     
@@ -803,6 +811,9 @@ static std::wstring help(const wchar_t * argv0, const Layout & layout, bool useC
                           L"report app version and exit.",
                           maxNameLength, layout);
     ret += L"\n";
+    ret += std::format(L"See {0}https://github.com/gershnik/keep-awake{1} for more details\n",
+                       makeWColor<Color::bright_blue>(useColor),
+                       makeWColor<Color::normal>(useColor));
     
     return ret;
 }

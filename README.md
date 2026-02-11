@@ -61,7 +61,7 @@ Or, you can use a full format:
 ```
 For days, hours, minutes and seconds. Every part is optional, but at least one must be present.
 
-You can use any number of spaces (including none) anywhere in the string but, if you do, yo will need to 
+You can use any number of spaces (including none) anywhere in the string but, if you do, you will need to 
 wrap the string in `"` to make it one command line argument.
 
 
