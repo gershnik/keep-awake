@@ -27,7 +27,7 @@ jobs:
           cmake --build out/x64 --target keep-awake --config RelWithDebInfo
           powershell Compress-Archive out/x64/RelWithDebInfo/keep-awake.exe out/keep-awake-${{ env.RELEASE_NAME }}-x64.zip
 
-          cmake -S . -B out/arm64 -DCMAKE_GENERATOR_PLATFORM=x64 -DCMAKE_BUILD_TYPE=RelWithDebInfo 
+          cmake -S . -B out/arm64 -DCMAKE_GENERATOR_PLATFORM=arm64 -DCMAKE_BUILD_TYPE=RelWithDebInfo 
           cmake --build out/arm64 --target keep-awake --config RelWithDebInfo
           powershell Compress-Archive out/arm64/RelWithDebInfo/keep-awake.exe out/keep-awake-${{ env.RELEASE_NAME }}-arm64.zip
 
