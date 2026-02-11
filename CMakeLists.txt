@@ -57,7 +57,7 @@ set(DECLARED_DEPENDENCIES "")
 
 FetchContent_Declare(argum
     GIT_REPOSITORY  https://github.com/gershnik/argum.git
-    GIT_TAG         v2.6
+    GIT_TAG         ead2b6d45c7059e640dfeb90397896bdf53e5c34
     GIT_SHALLOW     TRUE
     GIT_PROGRESS    TRUE
 )

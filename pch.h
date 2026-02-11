@@ -14,9 +14,7 @@
 #include <sddl.h>
 
 #define ARGUM_USE_EXPECTED
-
-#include <argum/parser.h>
-#include <argum/type-parsers.h>
+#include <argum/argum.h>
 
 #include <ctre.hpp>
 

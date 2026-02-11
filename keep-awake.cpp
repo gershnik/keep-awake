@@ -4,6 +4,25 @@ using namespace std::literals;
 constexpr auto g_maxDuration = std::numeric_limits<ULONGLONG>::max() / 1000;
 constexpr auto g_myGuid = L"BAF0674F-E091-468A-AAA9-234909F4CFFB";
 
+#define KA_COLOR_PID Color::bold, Color::cyan
+#define KA_COLOR_DURATION Color::bold, Color::magenta
+#define KA_COLOR_USER Color::bold, Color::bright_blue
+#define KA_COLOR_SESSION Color::bold, Color::yellow 
+#define KA_COLOR_SUCCESS Color::bold, Color::green
+#define KA_COLOR_ERROR Color::bold, Color::red
+
+#define KA_COLOR_USAGE_ARG Color::yellow
+#define KA_COLOR_USAGE_COMMAND Color::green
+#define KA_COLOR_USAGE_LONGOPT Color::cyan
+#define KA_COLOR_USAGE_SHORTOPT Color::green
+
+#define KA_COLOR_HELP_HEADING Color::bold, Color::blue
+#define KA_COLOR_HELP_PROGNAME Color::bold, Color::magenta
+#define KA_COLOR_HELP_ARG Color::bold, Color::yellow
+#define KA_COLOR_HELP_COMMAND Color::bold, Color::green
+#define KA_COLOR_HELP_LONGOPT Color::bold, Color::cyan
+#define KA_COLOR_HELP_SHORTOPT Color::bold, Color::green
+
 #pragma region General Win32 Utilities
 
 static std::wstring widen(std::string_view str) {
@@ -136,6 +155,33 @@ static void getTokenInfo(HANDLE token, TOKEN_INFORMATION_CLASS infoClass, std::v
 
 static std::wstring makePipeName(DWORD procId) {
     return std::format(L"\\\\.\\pipe\\{}-{}", g_myGuid, procId);
+}
+
+template <class... Types>
+inline void wprint(FILE* const fp, const std::wformat_string<Types...> fmt, Types &&... args) {
+    fputws(std::format(fmt, std::forward<Types>(args)...).c_str(), fp);
+}
+
+static inline void wprint(FILE* const fp, const std::wstring & str) {
+    fputws(str.c_str(), fp);
+}
+
+static inline void wprint(FILE* const fp, const wchar_t * str) {
+    fputws(str, fp);
+}
+
+template<Color First, Color... Rest>
+static inline std::wstring colorize(bool enabled, std::wstring_view str) {
+    if (enabled)
+        return Argum::colorize<First, Rest...>(str);
+    return std::wstring{str};
+}
+
+template<Color First, Color... Rest>
+constexpr auto makeWColor(bool enabled) {
+    if (enabled)
+        return Argum::makeWColor<First, Rest...>();
+    return L""sv;
 }
 
 static std::wstring formatDuration(ULONGLONG val) {
@@ -317,7 +363,7 @@ static unqiue_local_membuf<SECURITY_DESCRIPTOR> createPipeSecurityDescriptor() {
     return desc;
 }
 
-static void runDirect(std::optional<ULONGLONG> duration) {
+static void runDirect(std::optional<ULONGLONG> duration, ColorStatus envColorStatus) {
 
     auto desc = createPipeSecurityDescriptor();
 
@@ -343,11 +389,23 @@ static void runDirect(std::optional<ULONGLONG> duration) {
     if (oldState == 0)
         throwLastError("SetThreadExecutionState");
 
-    fputws((duration ? 
-            std::format(L"preventing sleep for {0} or untill process {1} is stopped\n", formatDuration(*duration), GetCurrentProcessId()) : 
-            std::format(L"preventing sleep indefinitely or untill process {0} is stopped\n", GetCurrentProcessId())).c_str(),
-            stdout);
+    auto useColor = shouldUseColor(envColorStatus, stdout);
 
+    if (duration) 
+        wprint(stdout, L"{0}preventing sleep for{1} {2}{4}{1} {0}or until process{1} {3}{5}{1} {0}is stopped{1}\n",
+            makeWColor<KA_COLOR_SUCCESS>(useColor),
+            makeWColor<Color::normal>(useColor),
+            makeWColor<KA_COLOR_DURATION>(useColor),
+            makeWColor<KA_COLOR_PID>(useColor),
+            formatDuration(*duration), 
+            GetCurrentProcessId());
+    else
+        wprint(stdout, L"{0}preventing sleep indefinitely or until process{1} {2}{3}{1} {0}is stopped{1}\n",
+            makeWColor<KA_COLOR_SUCCESS>(useColor),
+            makeWColor<Color::normal>(useColor),
+            makeWColor<KA_COLOR_PID>(useColor),
+            GetCurrentProcessId());
+    
     //Disconnect from parent, exceptions will not be reported from this point on
     (void)freopen("NUL:", "w", stdout);
     (void)freopen("NUL:", "w", stderr);
@@ -398,9 +456,14 @@ static void runDirect(std::optional<ULONGLONG> duration) {
 
 #pragma region Main Code
 
-static void runChild() {
+static void runChild(ColorStatus envColorStatus) {
     if (!SetEnvironmentVariable(g_myGuid, L"ON"))
         throwLastError("SetEnvironmentVariable");
+
+    if (shouldUseColor(envColorStatus, stdout) && shouldUseColor(envColorStatus, stderr)) {
+        if (!SetEnvironmentVariable(L"FORCE_COLOR", L"1"))
+            throwLastError("SetEnvironmentVariable");
+    }
 
     std::wstring exe = myname();
     
@@ -526,7 +589,7 @@ static std::wstring sidToUsername(PSID psid) {
     return domain + L'\\' + name;
 }
 
-static void listProcesses() {
+static void listProcesses(ColorStatus envColorStatus) {
     WTS_PROCESS_INFO * pi;
     DWORD count;
     if (!WTSEnumerateProcesses(WTS_CURRENT_SERVER_HANDLE, 0, 1, &pi, &count))
@@ -542,13 +605,20 @@ static void listProcesses() {
 
     auto addRow = [&](Row && row) {
         for(size_t i = 0; i < row.size(); ++i) {
-            widths[i] = std::max(widths[i], row[i].size());
+            widths[i] = std::max(widths[i], size_t(stringWidth(row[i])));
         }
         table.push_back(std::move(row));
     };
+
+    auto useColor = shouldUseColor(envColorStatus, stdout);
     
 
-    addRow({L"PID", L"USER", L"SESS", L"REMAINING"});
+    addRow({
+        colorize<KA_COLOR_PID>(useColor, L"PID"), 
+        colorize<KA_COLOR_USER>(useColor, L"USER"), 
+        colorize<KA_COLOR_SESSION>(useColor, L"SESSION"), 
+        colorize<KA_COLOR_DURATION>(useColor, L"REMAINING")
+    });
     auto mypid = GetCurrentProcessId();
     for(DWORD i = 0; i < count; ++i) {
         auto & info = pi[i];
@@ -556,7 +626,11 @@ static void listProcesses() {
             continue;
         if (info.pProcessName == L"keep-awake.exe"sv) {
             if (auto remaining = getInfo(pi[i].ProcessId)) {
-                addRow({std::to_wstring(pi[i].ProcessId), sidToUsername(pi[i].pUserSid), std::to_wstring(pi[i].SessionId), *remaining});
+                addRow({
+                    colorize<KA_COLOR_PID>(useColor, std::to_wstring(pi[i].ProcessId)), 
+                    colorize<KA_COLOR_USER>(useColor, sidToUsername(pi[i].pUserSid)), 
+                    colorize<KA_COLOR_SESSION>(useColor, std::to_wstring(pi[i].SessionId)), 
+                    colorize<KA_COLOR_DURATION>(useColor, *remaining)});
             }
         }
     }
@@ -564,7 +638,7 @@ static void listProcesses() {
     for (auto & row: table) {
         std::wstring acc;
         for(size_t i = 0; i < row.size(); ++i) {
-            std::wstring padding(widths[i] - row[i].size(), L' ');
+            std::wstring padding(widths[i] - stringWidth(row[i]), L' ');
             if (aligns[i] == left)
                 acc += row[i] + padding;
             else
@@ -574,7 +648,7 @@ static void listProcesses() {
         if (!acc.empty())
             acc.resize(acc.size() - 2);
         acc += L'\n';
-        fputws(acc.c_str(), stdout);
+        wprint(stdout, acc);
     }
 }
 
@@ -608,37 +682,136 @@ static void normalizeStdIO() noexcept {
 
 }
 
-static std::wstring usage(const wchar_t * progname) {
-    return std::format(
-LR"_(Usage: 
-    {0} [duration] 
-    {0} list
-    {0} stop pid [pid ...]
-    {0} --help
-    {0} --version
-)_", progname);
+struct Layout : WHelpFormatter::Layout {
+    Layout(FILE * fp) {
+        this->width = terminalWidth(fp);
+
+        auto minWidth = this->helpLeadingGap + this->helpNameMaxWidth + this->helpDescriptionGap;
+
+        if (this->width <= minWidth)
+            this->width = minWidth + 1;
+    }
+
+    unsigned usageLeadingSpace = 2;
+};
+
+static std::wstring formatLine(std::wstring_view line, 
+                               const Layout & layout, 
+                               unsigned leadingSpace = 0) {
+    std::wstring ret = wordWrap(std::wstring(leadingSpace, L' ') + std::wstring(line), 
+                                layout.width, leadingSpace + layout.helpLeadingGap);
+    ret += L"\n";
+    return ret;
 }
 
-static std::wstring help(const wchar_t * argv0) {
-    std::wstring ret = usage(argv0);
-    ret += 
-LR"_(
-positional arguments:
-  duration    how long to keep computer awake in milliseconds.
-              If omitted, keep it awake indefinitely.
-  list        show info about currently active keep-awake instances
-  stop        stop keep-awake instances given by pid arguments
+static std::wstring formatItemHelp(std::wstring_view name, 
+    std::wstring_view description,
+    unsigned maxNameLen,
+    const Layout & layout) {
+    auto descColumnOffset = layout.helpLeadingGap + maxNameLen + layout.helpDescriptionGap;
 
-options:
-  --help, -h  show this help message and exit
-  --version   report app version and exit
-)_";
+    std::wstring ret = wordWrap(std::wstring(layout.helpLeadingGap, L' ').append(name), layout.width, layout.helpLeadingGap);
+    auto lastEndlPos = ret.rfind(L'\n');
+    auto lastLineLen = stringWidth(std::wstring_view(ret.c_str() + (lastEndlPos + 1), ret.size() - (lastEndlPos + 1)));
+
+    if (lastLineLen > maxNameLen + layout.helpLeadingGap) {
+        ret += L'\n';
+        ret.append(descColumnOffset, L' ');
+    } else {
+        ret.append(descColumnOffset - lastLineLen, L' ');
+    }
+
+    ret.append(wordWrap(description, layout.width, descColumnOffset, descColumnOffset));
+    ret += L'\n';
+
+    return ret;
+}
+
+static std::wstring usage(const wchar_t * progname, const Layout & layout, bool useColor) {
+    std::wstring ret = colorize<KA_COLOR_HELP_HEADING>(useColor, L"Usage:\n");
+    auto colprogname = colorize<KA_COLOR_HELP_PROGNAME>(useColor, progname);
+    ret += formatLine(std::format(L"{0} [{1}duration{2}]",
+                                  colprogname,
+                                  makeWColor<KA_COLOR_USAGE_ARG>(useColor),
+                                  makeWColor<Color::normal>(useColor)),
+                      layout, layout.usageLeadingSpace);
+    ret += formatLine(std::format(L"{0} {1}list{2}",
+                                  colprogname,
+                                  makeWColor<KA_COLOR_USAGE_COMMAND>(useColor),
+                                  makeWColor<Color::normal>(useColor)),
+                      layout, layout.usageLeadingSpace);
+    ret += formatLine(std::format(L"{0} {1}stop{2} {3}pid{2} [{3}pid{2} ...]",
+                                  colprogname,
+                                  makeWColor<KA_COLOR_USAGE_COMMAND>(useColor),
+                                  makeWColor<Color::normal>(useColor),
+                                  makeWColor<KA_COLOR_USAGE_ARG>(useColor)),
+                      layout, layout.usageLeadingSpace);
+    ret += formatLine(std::format(L"{0} {1}--help{2}|{3}-h{2}",
+                                  colprogname,
+                                  makeWColor<KA_COLOR_USAGE_LONGOPT>(useColor),
+                                  makeWColor<Color::normal>(useColor),
+                                  makeWColor<KA_COLOR_USAGE_SHORTOPT>(useColor)),
+                      layout, layout.usageLeadingSpace);
+    ret += formatLine(std::format(L"{0} {1}--version{2}",
+                                  colprogname,
+                                  makeWColor<KA_COLOR_USAGE_LONGOPT>(useColor),
+                                  makeWColor<Color::normal>(useColor)),
+                      layout, layout.usageLeadingSpace);
+    return ret;
+}
+
+
+static std::wstring help(const wchar_t * argv0, const Layout & layout, bool useColor) {
+    unsigned maxNameLength = 18;
+    
+    if (maxNameLength > layout.helpNameMaxWidth)
+        maxNameLength = layout.helpNameMaxWidth;
+
+    std::wstring ret = usage(argv0, layout, useColor);
+    ret += L"\n";
+    
+    ret += formatLine(colorize<KA_COLOR_HELP_HEADING>(useColor, L"arguments:"), layout);
+    ret += formatItemHelp(colorize<KA_COLOR_HELP_ARG>(useColor, L"duration"), 
+                          L"how long to keep computer awake in milliseconds. If omitted, keep it awake indefinitely.", 
+                          maxNameLength, layout);
+    ret += L"\n";
+    
+    ret += formatLine(colorize<KA_COLOR_HELP_HEADING>(useColor, L"commands:"), layout);
+    ret += formatItemHelp(colorize<KA_COLOR_HELP_COMMAND>(useColor, L"list"), 
+                          L"show info about currently active keep-awake instances.",
+                          maxNameLength, layout);
+    ret += formatItemHelp(std::format(L"{0}stop{1} {2}pid{1} [{2}pid{1} ...]",
+                                      makeWColor<KA_COLOR_HELP_COMMAND>(useColor),
+                                      makeWColor<Color::normal>(useColor),
+                                      makeWColor<KA_COLOR_HELP_ARG>(useColor)),
+                          std::format(L"stop keep-awake instances given by {0}pid{1} arguments.",
+                                      makeWColor<KA_COLOR_HELP_ARG>(useColor),
+                                      makeWColor<Color::normal>(useColor)),
+                          maxNameLength, layout);
+    ret += L"\n";
+    
+    ret += formatLine(colorize<KA_COLOR_HELP_HEADING>(useColor, L"options:"), layout);
+    ret += formatItemHelp(std::format(L"{0}--help{1}, {2}-h{1}",
+                                      makeWColor<KA_COLOR_HELP_LONGOPT>(useColor),
+                                      makeWColor<Color::normal>(useColor),
+                                      makeWColor<KA_COLOR_HELP_SHORTOPT>(useColor)),
+                          L"show this help message and exit.",
+                          maxNameLength, layout);
+    ret += formatItemHelp(std::format(L"{0}--version{1}",
+                                      makeWColor<KA_COLOR_HELP_LONGOPT>(useColor),
+                                      makeWColor<Color::normal>(useColor)), 
+                          L"report app version and exit.",
+                          maxNameLength, layout);
+    ret += L"\n";
+    
     return ret;
 }
 
 int wmain(int argc, wchar_t * argv[]) {
 
     normalizeStdIO();
+
+    const ColorStatus envColorStatus = environmentColorStatus();
 
     const auto myenv = _wgetenv(g_myGuid);
     const bool isChild = myenv && myenv == L"ON"sv;
@@ -652,12 +825,12 @@ int wmain(int argc, wchar_t * argv[]) {
     try {
         parser.add(WOption(L"--help", L"-h").handler(
             [&]() {
-                fputws(help(progname).c_str(), stdout);
+                wprint(stdout, help(progname, Layout(stdout), shouldUseColor(envColorStatus, stdout)));
                 std::exit(EXIT_SUCCESS);
         }));
         parser.add(WOption(L"--version").handler(
             [&]() {
-                fputs(KEEP_AWAKE_VERSION, stdout);
+                wprint(stdout, L"" KEEP_AWAKE_VERSION);
                 std::exit(EXIT_SUCCESS);
         }));
         parser.add(WPositional(L"command").occurs(neverOrOnce).handler(
@@ -668,7 +841,8 @@ int wmain(int argc, wchar_t * argv[]) {
                 } else if (auto maybeVal = parseDuration(value)) {
                     auto val = *maybeVal;
                     if (val > 86'400'000 * 365ull)
-                        return {Failure<WParser::ValidationError>, std::format(L"duration \"{}\" is too large (do you really want to prevent sleep for more than a year?)", value)};
+                        return {Failure<WParser::ValidationError>, 
+                                std::format(L"duration \"{}\" is too large (do you really want to prevent sleep for more than a year?)", value)};
                     duration = val;
                 } else {
                     return {Failure<WParser::UnrecognizedOption>, value};
@@ -690,45 +864,54 @@ int wmain(int argc, wchar_t * argv[]) {
         }, L"stop command requires PID arguments");
         
         if (auto err = parser.parse(argc, argv).error()) {
-            std::wstring message;
-            message += err->message();
-            message += L"\n\n";
-            message += usage(progname);
-            message += '\n';
-            fputws(message.c_str(), stderr);
+            auto useColor = shouldUseColor(envColorStatus, stderr);
+            wprint(stderr, L"{}\n\n{}\n", 
+                   colorize<KA_COLOR_ERROR>(useColor, err->message()), 
+                   usage(progname, Layout(stderr), useColor));
             return EXIT_FAILURE;
         }
         
 
         if (command) {
             if (*command == L"list") {
-                listProcesses();
+                listProcesses(envColorStatus);
                 return EXIT_SUCCESS;
             } 
 
             assert(*command == L"stop");
             assert(!pidsToKill.empty());
             for(auto pid: pidsToKill) {
+                auto useColor = shouldUseColor(envColorStatus, stdout);
                 if (kill(pid))
-                    fputws(std::format(L"stop request successfully sent to process {}\n", pid).c_str(), stdout);
+                    wprint(stdout, L"{0}stop request successfully sent to process{1} {2}{3}{1}\n",
+                        makeWColor<KA_COLOR_SUCCESS>(useColor),
+                        makeWColor<Color::normal>(useColor),
+                        makeWColor<KA_COLOR_PID>(useColor),
+                        pid);
                 else
-                    fputws(std::format(L"unable to send stop request to process {}\n", pid).c_str(), stdout);
+                    wprint(stdout, L"{0}unable to send stop request to process{1} {2}{3}{1}\n",
+                        makeWColor<KA_COLOR_ERROR>(useColor),
+                        makeWColor<Color::normal>(useColor),
+                        makeWColor<KA_COLOR_PID>(useColor),
+                        pid);
             }
             return EXIT_SUCCESS;
         }
         
         if (isChild)
-            runDirect(duration);
+            runDirect(duration, envColorStatus);
         else
-            runChild();
+            runChild(envColorStatus);
 
         return EXIT_SUCCESS;
 
     } catch (std::exception & ex) {
+        auto colorizer = wideColorizerForFile(envColorStatus, stderr);
+        auto message = widen(ex.what());
         if (isChild)
-            fputws(std::format(L"{}: (child): {}", progname, widen(ex.what())).c_str(), stderr);
+            wprint(stderr, colorizer.error(std::format(L"{}: (child): {}", progname, message)));
         else
-            fputws(std::format(L"{}: {}", progname, widen(ex.what())).c_str(), stderr);
+            wprint(stderr, colorizer.error(std::format(L"{}: {}", progname, message)));
     }
     return EXIT_FAILURE;
 }
