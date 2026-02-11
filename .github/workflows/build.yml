@@ -34,10 +34,11 @@ jobs:
               VCPREFIX="C:\\Program Files\\Microsoft Visual Studio\\2022\\Enterprise\\VC\\Tools\\Llvm\\${{ matrix.arch }}\\bin"
               export "CC=$VCPREFIX\\${{ matrix.compiler }}"
               export "CXX=$VCPREFIX\\${{ matrix.compiler }}"
+              EXTRA_ARGS=-GNinja
           else
               EXTRA_ARGS=-DCMAKE_GENERATOR_PLATFORM=${{ matrix.platform }}
           fi
-          cmake -GNinja -S . -B out $EXTRA_ARGS -DCMAKE_BUILD_TYPE=RelWithDebInfo
+          cmake -S . -B out $EXTRA_ARGS -DCMAKE_BUILD_TYPE=RelWithDebInfo
           cmake --build out --target keep-awake --config RelWithDebInfo
 
     
