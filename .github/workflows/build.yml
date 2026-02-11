@@ -32,8 +32,8 @@ jobs:
           cmake -E make_directory out
           if "${{ matrix.compiler }}" == "clang" (
               set VCPREFIX=C:\\Program Files\\Microsoft Visual Studio\\2022\\Enterprise\\VC\\Tools\\Llvm\\${{ matrix.arch }}\\bin
-              set CC="$VCPREFIX\\${{ matrix.compiler }}"
-              set CXX="$VCPREFIX\\${{ matrix.compiler }}"
+              set CC="%VCPREFIX%\\${{ matrix.compiler }}"
+              set CXX="%VCPREFIX%\\${{ matrix.compiler }}"
               set EXTRA_ARGS=-GNinja
           ) else (
               set EXTRA_ARGS=-DCMAKE_GENERATOR_PLATFORM=${{ matrix.platform }}
