@@ -1,10 +1,10 @@
 # Keep-Awake
 
 This is a small tool that allows you to prevent a Windows machine from sleeping/hibernating. 
-This is useful, for example, when connecting over SSH to a Windows machine that is configured to sleep when not used. 
+This is useful, for example, when connecting over SSH to a Windows machine that is configured to sleep when not in use. 
 
 Unlike other solutions to this task, `keep-awake` **doesn't change global computer settings** and so doesn't leave
-them 'orphaned' if it is abnormally terminated.
+them "orphaned" if it is abnormally terminated.
 
 ## Installation
 
@@ -13,15 +13,15 @@ anywhere on your `%PATH%`.
 
 ## Usage
 
-`keep-awake` is a command-line application that works by launching a background copy of itself 
+`keep-awake` is a command-line application that works by launching a background copy of itself,
 which prevents the computer from sleeping.
-This allows you to continue your work while it is running in background.
+This allows you to continue your work while it is running in the background.
 
-You can see the available command line options by running `keep-awake --help`
+You can see the available command-line options by running `keep-awake --help`.
 
 ### Keep machine awake until the process is terminated
 
-This mode is useful when connecting over SSH. Windows SSH server kills all the child processes created within SSH session 
+This mode is useful when connecting over SSH. The Windows SSH server kills all the child processes created within an SSH session 
 when the session ends. Thus, effectively, this mode keeps the computer alive while the session is active.
 
 ```bat
@@ -40,14 +40,14 @@ keep-awake <timeout>
 ... other commands ...
 ```
 
-When running over SSH you can prevent `keep-alive` process from being killed when SSH session ends using:
+When running over SSH, you can prevent the `keep-awake` process from being killed when the SSH session ends using:
 
 * If your shell is CMD
 ```bat
 powershell -Command "Invoke-WmiMethod -Path 'Win32_Process' -Name Create -ArgumentList 'path\to\keep-awake <timeout>'"
 ```
 
-* If your shell is Powershell
+* If your shell is PowerShell
 ```powershell
 Invoke-WmiMethod -Path 'Win32_Process' -Name Create -ArgumentList 'path\to\keep-awake <timeout>'
 ```
@@ -61,8 +61,8 @@ Or, you can use a full format:
 ```
 For days, hours, minutes and seconds. Every part is optional, but at least one must be present.
 
-You can use any number of spaces (including none) anywhere in the string but, if you do, you will need to 
-wrap the string in `"` to make it one command line argument.
+You can use any number of spaces (including none) anywhere in the string, but if you do, you will need to 
+wrap the string in `"` to make it one command-line argument.
 
 
 ### Listing currently active instances
@@ -82,16 +82,16 @@ You can stop running instances of `keep-awake` via:
 keep-awake stop pid [pid ...]
 ```
 
-where pid is a process ID of a running instance. The process IDs are reported when you launch `keep-awake`
-or by `list` command.
+where `pid` is a process ID of a running instance. The process IDs are reported when you launch `keep-awake`
+or when using the `list` command.
 
 Alternatively, you can always terminate an instance using Task Manager or a similar tool.
 
 ### Color output
 
-Since version 2.1.0 `keep-awake` supports colored output if the output is printed on a terminal that supports
+Since version 2.1.0, `keep-awake` supports colored output if the output is printed on a terminal that supports
 colors. You can override this behavior using environment variables [NO_COLOR](https://no-color.org) and 
-[FORCE_COLOR](https://force-color.org). If both are set `NO_COLOR` takes precedence.
+[FORCE_COLOR](https://force-color.org). If both are set, `NO_COLOR` takes precedence.
 
 ## Building
 
