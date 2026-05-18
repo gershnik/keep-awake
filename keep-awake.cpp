@@ -326,18 +326,6 @@ private:
 };
 
 
-static void writeInfo(HANDLE hPipe, const WaitTracker & tracker) {
-    std::string reply = narrow(tracker.formatRemaining());
-    auto size = DWORD(reply.size());
-    for(DWORD total = 0; total < size; ) {
-        DWORD written;
-        if (!WriteFile(hPipe, (const BYTE *)reply.data() + total, size - total, &written, nullptr))
-            break;
-        total += written;
-    }
-    FlushFileBuffers(hPipe);
-}
-
 // By default pipes get a security descriptor that grants read access to 
 // members of the Everyone group and the anonymous account. Ugh
 // Let's create one that doesn't
@@ -367,6 +355,41 @@ static unqiue_local_membuf<SECURITY_DESCRIPTOR> createPipeSecurityDescriptor() {
     return desc;
 }
 
+static std::optional<std::string> readPipeMessage(HANDLE hPipe, size_t expectedSize) {
+    std::string ret;
+    ret.resize(expectedSize);
+    size_t consumed = 0;
+    for ( ; ; ) {
+        DWORD read = 0;
+        if (ReadFile(hPipe, ret.data() + consumed, DWORD(ret.size() - consumed), &read, nullptr)) {
+            consumed += read;
+            ret.resize(consumed);
+            return {std::move(ret)};
+        }
+        auto err = GetLastError();
+        if (err == ERROR_MORE_DATA) {
+            consumed += read;
+            ret.resize(consumed + 16);
+            continue;
+        }
+        return {};
+    }
+}
+
+static bool writePipeMessage(HANDLE hPipe, std::string_view data) {
+    DWORD written;
+    if (!WriteFile(hPipe, data.data(), DWORD(data.size()), &written, nullptr))
+        return false;
+    assert(written == DWORD(cmd.size())); //this cannot fail for message-oriented pipes
+    return true;
+}
+
+static void writeInfo(HANDLE hPipe, const WaitTracker & tracker) {
+    std::string reply = narrow(tracker.formatRemaining());
+    writePipeMessage(hPipe, reply);
+    FlushFileBuffers(hPipe);
+}
+
 static void runDirect(std::optional<ULONGLONG> duration, ColorStatus envColorStatus) {
 
     auto desc = createPipeSecurityDescriptor();
@@ -378,7 +401,7 @@ static void runDirect(std::optional<ULONGLONG> duration, ColorStatus envColorSta
 
     AutoFile hPipe =  CreateNamedPipe(makePipeName(GetCurrentProcessId()).c_str(),
                                       PIPE_ACCESS_DUPLEX | FILE_FLAG_FIRST_PIPE_INSTANCE | FILE_FLAG_OVERLAPPED, 
-                                      PIPE_TYPE_BYTE | PIPE_READMODE_BYTE | PIPE_WAIT | PIPE_REJECT_REMOTE_CLIENTS,
+                                      PIPE_TYPE_MESSAGE | PIPE_READMODE_MESSAGE | PIPE_WAIT | PIPE_REJECT_REMOTE_CLIENTS,
                                       1, 4096, 0, 
                                       NMPWAIT_USE_DEFAULT_WAIT, &sa);
     if (!hPipe)
@@ -424,7 +447,7 @@ static void runDirect(std::optional<ULONGLONG> duration, ColorStatus envColorSta
         // The code below can work with or without pipe
         // For now we fail above if the pipe cannot be created.
         // However, it is possible to make that non-fatal and this
-        //code will work just fine.
+        // code will work just fine.
         SetLastError(ERROR_IO_PENDING);
         if (!hPipe || !ConnectNamedPipe(hPipe.get(), &ovl)) {
             DWORD err = GetLastError();
@@ -440,12 +463,11 @@ static void runDirect(std::optional<ULONGLONG> duration, ColorStatus envColorSta
         }
         assert(hPipe);
                 
-        std::string command(4, '\0');
-        DWORD read;
-        if (ReadFile(hPipe.get(), command.data(), DWORD(command.size()), &read, nullptr) && read == 4) {
-            if (command == "info") {
+        auto command = readPipeMessage(hPipe.get(), 4);
+        if (command) {
+            if (*command == "info") {
                 writeInfo(hPipe.get(), tracker);
-            } else if (command == "stop") {
+            } else if (*command == "stop") {
                 break;
             }
         }
@@ -533,8 +555,10 @@ static DWORD execOnPipe(DWORD procId, std::string_view cmd, std::invocable<HANDL
             }
             return err;
         }
-        DWORD written;
-        if (!WriteFile(hPipe.get(), cmd.data(), DWORD(cmd.size()), &written, nullptr) || written != cmd.size())
+        DWORD mode = PIPE_READMODE_MESSAGE;
+        if (!SetNamedPipeHandleState(hPipe.get(), &mode, nullptr, nullptr))
+            return GetLastError();
+        if (!writePipeMessage(hPipe.get(), cmd))
             return GetLastError();
         if constexpr (std::is_same_v<decltype(std::forward<decltype(proc)>(proc)(hPipe.get())), DWORD>)
             return std::forward<decltype(proc)>(proc)(hPipe.get());
@@ -546,16 +570,15 @@ static DWORD execOnPipe(DWORD procId, std::string_view cmd, std::invocable<HANDL
 }
 
 static std::optional<std::wstring> getInfo(DWORD procId) {
-    std::string buf(256, '\0');
-    auto err = execOnPipe(procId, "info", [&buf](HANDLE hPipe) -> DWORD {
-        DWORD read;
-        if (!ReadFile(hPipe, buf.data(), DWORD(buf.size()), &read, nullptr))
+    std::optional<std::string> result;
+    auto err = execOnPipe(procId, "info", [&result](HANDLE hPipe) -> DWORD {
+        result = readPipeMessage(hPipe, 256);
+        if (!result)
             return GetLastError();
-        buf.resize(read);
         return ERROR_SUCCESS;
     }); 
-    if (err == ERROR_SUCCESS)
-        return widen(buf);
+    if (err == ERROR_SUCCESS && result)
+        return widen(*result);
     if (err == ERROR_ACCESS_DENIED)
         return L"<inaccessible>";
     return {};
