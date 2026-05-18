@@ -6,6 +6,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
+## [2.2.0] - 2026-05-17
+
 ### Fixed
 - Corrected confusing help string for the duration command-line option
 - Version output is now properly terminated with EOL
@@ -62,3 +64,4 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 [1.0.2]: https://github.com/gershnik/keep-awake/releases/v1.0.2
 [2.0.0]: https://github.com/gershnik/keep-awake/releases/v2.0.0
 [2.1.0]: https://github.com/gershnik/keep-awake/releases/v2.1.0
+[2.2.0]: https://github.com/gershnik/keep-awake/releases/v2.2.0
