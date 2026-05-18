@@ -121,9 +121,9 @@ static std::wstring myname() {
         if (err == ERROR_SUCCESS)
             break;
         if (err == ERROR_INSUFFICIENT_BUFFER) {
-            if (err < std::numeric_limits<DWORD>::max() / 2)
+            if (res < std::numeric_limits<DWORD>::max() / 2)
                 size *= 2;
-            else if (err < std::numeric_limits<DWORD>::max() - 32)
+            else if (res < std::numeric_limits<DWORD>::max() - 32)
                 size += 32;
             else
                 throw std::bad_alloc();
