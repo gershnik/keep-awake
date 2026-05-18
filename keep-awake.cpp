@@ -380,7 +380,7 @@ static bool writePipeMessage(HANDLE hPipe, std::string_view data) {
     DWORD written;
     if (!WriteFile(hPipe, data.data(), DWORD(data.size()), &written, nullptr))
         return false;
-    assert(written == DWORD(cmd.size())); //this cannot fail for message-oriented pipes
+    assert(written == DWORD(data.size())); //this cannot fail for message-oriented pipes
     return true;
 }
 
@@ -523,7 +523,9 @@ static void runChild(ColorStatus envColorStatus) {
     si.hStdError = hErrWrite.get();
     PROCESS_INFORMATION pi;
 
-    if (!CreateProcess(exe.data(), GetCommandLine(), nullptr, nullptr, true, CREATE_DEFAULT_ERROR_MODE | CREATE_NO_WINDOW | DETACHED_PROCESS, nullptr, nullptr, &si, &pi))
+    std::wstring cmdline = GetCommandLine();
+
+    if (!CreateProcess(exe.data(), cmdline.data(), nullptr, nullptr, true, CREATE_DEFAULT_ERROR_MODE | CREATE_NO_WINDOW | DETACHED_PROCESS, nullptr, nullptr, &si, &pi))
         throwLastError("CreateProcess");
     CloseHandle(pi.hProcess);
     CloseHandle(pi.hThread);
@@ -550,7 +552,7 @@ static DWORD execOnPipe(DWORD procId, std::string_view cmd, std::invocable<HANDL
             DWORD err = GetLastError();
             if (err == ERROR_PIPE_BUSY) {
                 if (!WaitNamedPipe(pipeName.c_str(), NMPWAIT_WAIT_FOREVER))
-                    return err;
+                    return GetLastError();
                 continue;
             }
             return err;
@@ -649,14 +651,14 @@ static void listProcesses(ColorStatus envColorStatus) {
     auto mypid = GetCurrentProcessId();
     for(DWORD i = 0; i < count; ++i) {
         auto & info = pi[i];
-        if (pi[i].ProcessId == mypid)
+        if (info.ProcessId == mypid)
             continue;
         if (info.pProcessName == L"keep-awake.exe"sv) {
-            if (auto remaining = getInfo(pi[i].ProcessId)) {
+            if (auto remaining = getInfo(info.ProcessId)) {
                 addRow({
-                    colorize<KA_COLOR_PID>(useColor, std::to_wstring(pi[i].ProcessId)), 
-                    colorize<KA_COLOR_USER>(useColor, sidToUsername(pi[i].pUserSid)), 
-                    colorize<KA_COLOR_SESSION>(useColor, std::to_wstring(pi[i].SessionId)), 
+                    colorize<KA_COLOR_PID>(useColor, std::to_wstring(info.ProcessId)), 
+                    colorize<KA_COLOR_USER>(useColor, sidToUsername(info.pUserSid)), 
+                    colorize<KA_COLOR_SESSION>(useColor, std::to_wstring(info.SessionId)), 
                     colorize<KA_COLOR_DURATION>(useColor, *remaining)});
             }
         }
