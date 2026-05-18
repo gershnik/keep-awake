@@ -845,7 +845,7 @@ int wmain(int argc, wchar_t * argv[]) {
         }));
         parser.add(WOption(L"--version").handler(
             [&]() {
-                wprint(stdout, L"" KEEP_AWAKE_VERSION);
+                wprint(stdout, L"" KEEP_AWAKE_VERSION "\n");
                 std::exit(EXIT_SUCCESS);
         }));
         parser.add(WPositional(L"command").occurs(neverOrOnce).handler(
