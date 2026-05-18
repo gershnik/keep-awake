@@ -57,7 +57,7 @@ set(DECLARED_DEPENDENCIES "")
 
 FetchContent_Declare(argum
     GIT_REPOSITORY  https://github.com/gershnik/argum.git
-    GIT_TAG         v2.8
+    GIT_TAG         v2.9
     GIT_SHALLOW     TRUE
     GIT_PROGRESS    TRUE
     SOURCE_SUBDIR   single-file
@@ -66,7 +66,7 @@ list(APPEND DECLARED_DEPENDENCIES argum)
 
 FetchContent_Declare(ctre
     GIT_REPOSITORY  https://github.com/hanickadot/compile-time-regular-expressions.git
-    GIT_TAG         v3.10.0
+    GIT_TAG         v3.11.0
     GIT_SHALLOW     TRUE
     GIT_PROGRESS    TRUE
     SOURCE_SUBDIR   single-header
