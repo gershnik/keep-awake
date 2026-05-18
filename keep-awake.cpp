@@ -92,6 +92,10 @@ requires(
 )
 using unqiue_local_membuf = std::unique_ptr<T, LocalAllocDeleter>;
 
+struct WTSDeleter {
+    void operator()(void * ptr) { if (ptr) WTSFreeMemory(ptr); }
+};
+
 //static std::wstring win32ErrorMessage(DWORD err) {
 //    return widen(std::error_code(int(err), std::system_category()).message());
 //}
@@ -590,9 +594,9 @@ static std::wstring sidToUsername(PSID psid) {
 }
 
 static void listProcesses(ColorStatus envColorStatus) {
-    WTS_PROCESS_INFO * pi;
+    std::unique_ptr<WTS_PROCESS_INFO[], WTSDeleter> pi;
     DWORD count;
-    if (!WTSEnumerateProcesses(WTS_CURRENT_SERVER_HANDLE, 0, 1, &pi, &count))
+    if (!WTSEnumerateProcesses(WTS_CURRENT_SERVER_HANDLE, 0, 1, std::out_ptr(pi), &count))
         throwLastError("WTSEnumerateProcesses");
 
     size_t widths[4] = {9, 16, 4, 16};
