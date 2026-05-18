@@ -777,7 +777,7 @@ static std::wstring help(const wchar_t * argv0, const Layout & layout, bool useC
     ret += formatLine(colorize<KA_COLOR_HELP_HEADING>(useColor, L"arguments:"), layout);
     ret += formatItemHelp(colorize<KA_COLOR_HELP_ARG>(useColor, L"duration"),
                           std::format(
-                          L"how long to keep computer awake in milliseconds. If omitted, keep it awake indefinitely. "
+                          L"how long to keep computer awake. If omitted, keep it awake indefinitely. "
                           L"The duration can be a simple number - this is interpreted as seconds. "
                           L"Or, you can use a full format:\n{0}<num>d <num>h <num>m <num>[s]{1} "
                           L"for days, hours, minutes and seconds. Every part is optional, but at least one must be present. "
