@@ -6,6 +6,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
+### Fixed
+- Corrected confusing help string for the duration command-line option
+- Version output is now properly terminated with EOL
+- Made IPC for "list" and "stop" commands more robust
+- Fixed minor internal bugs
+
+### Changed
+- Updated dependencies
+
 ## [2.1.0] - 2026-02-11
 
 ### Added
